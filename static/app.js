@@ -210,7 +210,8 @@ function renderDashboard() {
   const porCat = {};
   STATE.gastos.forEach(g => { porCat[g.categoria] = (porCat[g.categoria] || 0) + g.monto; });
   const entradas = Object.entries(porCat).sort((a, b) => b[1] - a[1]);
-  const total = entradas.reduce((s, [, v]) => s + v, 0) || 1;
+  const totalReal = entradas.reduce((s, [, v]) => s + v, 0);
+  const total = totalReal || 1; // evita dividir entre cero en los arcos del donut
   let acc = 0;
   const R = 46, C = 2 * Math.PI * R;
   document.getElementById("donutArcs").innerHTML = entradas.map(([cat, val]) => {
@@ -222,7 +223,7 @@ function renderDashboard() {
     return `<circle cx="60" cy="60" r="${R}" fill="none" stroke="${info.color}" stroke-width="14"
              stroke-dasharray="${dash} ${C-dash}" stroke-dashoffset="${offset}"/>`;
   }).join("");
-  document.getElementById("donutTotal").textContent = cop(total);
+  document.getElementById("donutTotal").textContent = cop(totalReal);
   document.getElementById("donutSub").textContent = entradas.length + " categorías este mes";
   document.getElementById("donutLegend").innerHTML = entradas.slice(0, 6).map(([cat, val]) => {
     const info = catInfo(cat);
@@ -781,3 +782,4 @@ async function savePorra() {
     initLogin();
   }
 })();
+
