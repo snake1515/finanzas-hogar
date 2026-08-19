@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>FinanzasHogar</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+--bg:#0a0c12;--bg2:#111520;--bg3:#181d2e;--bg4:#1f263a;--bg5:#252d42;
+--border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);--border3:rgba(255,255,255,0.18);
+--text:#e2e5f0;--text2:#8590a8;--text3:#4e566b;
+--accent:#5b7fff;--accent2:#4466ee;--accentbg:rgba(91,127,255,0.12);
+--green:#2ecf82;--greenbg:rgba(46,207,130,0.1);
+--red:#ff5252;--redbg:rgba(255,82,82,0.1);
+--orange:#ff9040;--orangebg:rgba(255,144,64,0.1);
+--yellow:#ffc940;--yellowbg:rgba(255,201,64,0.1);
+--purple:#a78bfa;--purplebg:rgba(167,139,250,0.1);
+--teal:#2dd4bf;
+--r:14px;--r2:10px;--r3:8px;
+--font:'Inter',sans-serif;
+--sh:0 4px 24px rgba(0,0,0,0.5);
+--nav-h:64px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;overflow:hidden;}
+body{font-family:var(--font);background:var(--bg);color:var(--text);display:flex;flex-direction:column;}
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--bg5);border-radius:2px;}
+#loginScreen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;}
+.login-card{background:var(--bg2);border:1px solid var(--border2);border-radius:20px;padding:32px 28px;width:100%;max-width:380px;}
+.login-logo{font-size:22px;font-weight:700;margin-bottom:4px;letter-spacing:-.5px;}
+.login-logo span{color:var(--accent);}
+.login-sub{font-size:13px;color:var(--text2);margin-bottom:24px;}
+.user-list{display:grid;gap:8px;margin-bottom:16px;}
+.user-card{display:flex;align-items:center;gap:12px;padding:11px 14px;background:var(--bg3);border:1.5px solid var(--border);border-radius:var(--r2);cursor:pointer;transition:all .15s;user-select:none;}
+.user-card:hover,.user-card.sel{border-color:var(--accent);background:var(--accentbg);}
+.user-card-name{font-size:14px;font-weight:500;}
+.user-card-role{font-size:11px;color:var(--text3);margin-top:1px;}
+.pin-row{display:flex;gap:8px;}
+#appShell{display:none;flex:1;flex-direction:column;height:100%;overflow:hidden;}
+#appShell.show{display:flex;}
+.topbar{height:56px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 16px;flex-shrink:0;position:relative;z-index:50;}
+.topbar-title{font-size:16px;font-weight:600;letter-spacing:-.3px;}
+.topbar-right{display:flex;align-items:center;gap:8px;}
+.month-pill{display:flex;align-items:center;gap:4px;background:var(--bg3);border:1px solid var(--border2);border-radius:20px;padding:4px 10px;cursor:pointer;font-size:12px;font-weight:500;color:var(--text2);}
+.month-pill select{background:none;border:none;color:var(--text);font-size:12px;font-family:var(--font);font-weight:500;outline:none;cursor:pointer;max-width:70px;}
+.main-content{flex:1;overflow-y:auto;overflow-x:hidden;padding-bottom:calc(var(--nav-h) + 8px);}
+.page{display:none;padding:16px;}
+.page.active{display:block;}
+.bottom-nav{height:var(--nav-h);background:var(--bg2);border-top:1px solid var(--border);display:flex;align-items:stretch;flex-shrink:0;position:relative;z-index:50;}
+.nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;color:var(--text3);transition:color .15s;font-size:10px;font-weight:500;user-select:none;padding-bottom:2px;}
+.nav-btn.active{color:var(--accent);}
+@media(min-width:768px){
+body{flex-direction:row;}
+.bottom-nav{display:none;}
+#appShell{flex-direction:row;}
+.sidebar-desktop{width:220px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;height:100%;flex-shrink:0;}
+.sidebar-logo{padding:24px 20px 16px;border-bottom:1px solid var(--border);}
+.sidebar-logo-text{font-size:17px;font-weight:700;letter-spacing:-.4px;}
+.sidebar-logo-text span{color:var(--accent);}
+.sidebar-logo-sub{font-size:11px;color:var(--text3);margin-top:2px;}
+.sidebar-nav{flex:1;padding:12px 10px;overflow-y:auto;}
+.snav-section{margin-bottom:18px;}
+.snav-title{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;padding:0 10px 8px;}
+.snav-item{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:var(--r3);cursor:pointer;color:var(--text2);font-size:13px;font-weight:400;transition:all .15s;margin-bottom:1px;user-select:none;}
+.snav-item:hover{background:var(--bg3);color:var(--text);}
+.snav-item.active{background:var(--accentbg);color:var(--accent);font-weight:500;}
+.main-shell{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+.topbar{height:52px;}
+.main-content{padding-bottom:16px;}
+.page{padding:24px;}
+}
+.sidebar-desktop{display:none;}
+@media(min-width:768px){.sidebar-desktop{display:flex;}}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:16px;}
+.card+.card{margin-top:12px;}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.card-title{font-size:14px;font-weight:600;}
+.card-sub{font-size:11px;color:var(--text3);margin-top:2px;}
+.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+.stat-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r2);padding:14px;}
+.stat-label{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px;}
+.stat-value{font-size:20px;font-weight:700;letter-spacing:-.5px;font-variant-numeric:tabular-nums;}
+.stat-note{font-size:11px;color:var(--text3);margin-top:3px;}
+@media(min-width:768px){.stats-grid{grid-template-columns:repeat(4,1fr);}}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 14px;border-radius:var(--r3);font-size:13px;font-family:var(--font);font-weight:500;cursor:pointer;border:none;transition:all .15s;outline:none;user-select:none;}
+.btn-primary{background:var(--accent);color:#fff;}
+.btn-primary:hover{background:var(--accent2);}
+.btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border2);}
+.btn-ghost:hover{background:var(--bg3);color:var(--text);}
+.btn-danger{background:var(--redbg);color:var(--red);border:1px solid rgba(255,82,82,0.15);}
+.btn-sm{padding:5px 10px;font-size:12px;}
+.fab{position:fixed;bottom:calc(var(--nav-h) + 16px);right:16px;width:52px;height:52px;border-radius:50%;background:var(--accent);color:#fff;border:none;cursor:pointer;font-size:22px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(91,127,255,0.4);z-index:40;}
+@media(min-width:768px){.fab{bottom:24px;right:24px;}}
+.badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:500;white-space:nowrap;}
+.badge-green{background:var(--greenbg);color:var(--green);}
+.badge-red{background:var(--redbg);color:var(--red);}
+.badge-orange{background:var(--orangebg);color:var(--orange);}
+.badge-blue{background:var(--accentbg);color:var(--accent);}
+.badge-gray{background:var(--bg4);color:var(--text2);}
+.av{border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:600;flex-shrink:0;}
+.av-sm{width:26px;height:26px;font-size:10px;}
+.av-lg{width:52px;height:52px;font-size:18px;}
+.list-item{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);}
+.list-item:last-child{border-bottom:none;}
+.list-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:17px;}
+.list-body{flex:1;min-width:0;}
+.list-title{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.list-sub{font-size:11px;color:var(--text2);margin-top:2px;}
+.list-right{text-align:right;flex-shrink:0;}
+.list-amount{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.3px;}
+.list-meta{font-size:11px;color:var(--text3);margin-top:2px;}
+.prog{height:5px;background:var(--bg4);border-radius:3px;overflow:hidden;margin-top:5px;}
+.prog-fill{height:100%;border-radius:3px;transition:width .4s;}
+.form-group{margin-bottom:12px;}
+.form-label{font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px;display:block;}
+.form-input,.form-select,.form-textarea{width:100%;padding:10px 12px;background:var(--bg3);border:1.5px solid var(--border2);border-radius:var(--r3);color:var(--text);font-size:14px;font-family:var(--font);outline:none;-webkit-appearance:none;}
+.form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--accent);}
+.form-select option{background:var(--bg2);}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.65);display:none;align-items:flex-end;justify-content:center;z-index:1000;}
+.modal-overlay.open{display:flex;}
+@media(min-width:768px){.modal-overlay{align-items:center;}}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:20px 20px 0 0;padding:24px 20px 32px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;}
+@media(min-width:768px){.modal{border-radius:20px;padding:28px;}}
+.modal-handle{width:36px;height:4px;background:var(--bg5);border-radius:2px;margin:0 auto 20px;}
+@media(min-width:768px){.modal-handle{display:none;}}
+.modal-title{font-size:17px;font-weight:700;margin-bottom:18px;letter-spacing:-.3px;}
+.modal-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}
+.tabs{display:flex;gap:4px;background:var(--bg3);border-radius:var(--r3);padding:3px;margin-bottom:16px;overflow-x:auto;}
+.tab{padding:7px 14px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;color:var(--text2);white-space:nowrap;flex-shrink:0;}
+.tab.active{background:var(--bg2);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.4);}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:12px;}
+.chip{padding:5px 12px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;color:var(--text2);border:1px solid var(--border2);white-space:nowrap;flex-shrink:0;}
+.chip.active{background:var(--accentbg);border-color:var(--accent);color:var(--accent);}
+.drop-zone{border:2px dashed var(--border2);border-radius:var(--r);padding:32px 20px;text-align:center;cursor:pointer;}
+.drop-zone:hover,.drop-zone.drag{border-color:var(--accent);background:var(--accentbg);}
+.sec-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.sec-title{font-size:15px;font-weight:600;letter-spacing:-.3px;}
+.sep{height:1px;background:var(--border);margin:14px 0;}
+.donut-wrap{position:relative;width:120px;height:120px;flex-shrink:0;}
+.donut-wrap svg{transform:rotate(-90deg);}
+.donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.alert-item{display:flex;align-items:flex-start;gap:10px;padding:12px;border-radius:var(--r2);margin-bottom:8px;}
+.alert-item.danger{background:var(--redbg);border:1px solid rgba(255,82,82,.2);}
+.alert-item.warning{background:var(--orangebg);border:1px solid rgba(255,144,64,.2);}
+.color-picker{display:flex;gap:8px;flex-wrap:wrap;}
+.color-dot{width:26px;height:26px;border-radius:50%;cursor:pointer;border:2.5px solid transparent;}
+.color-dot.sel{border-color:#fff;}
+#notifCont{position:fixed;top:14px;right:14px;z-index:9999;display:flex;flex-direction:column;gap:6px;pointer-events:none;}
+.notif{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r2);padding:11px 14px;font-size:13px;min-width:220px;max-width:300px;box-shadow:var(--sh);pointer-events:auto;}
+.notif.success{border-left:3px solid var(--green);}
+.notif.error{border-left:3px solid var(--red);}
+.empty{text-align:center;padding:40px 20px;color:var(--text2);}
+.loan-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r2);padding:14px;margin-bottom:10px;}
+.loan-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.loan-name{font-size:14px;font-weight:600;}
+.loan-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;}
+.loan-stat .ls-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;}
+.loan-stat .ls-val{font-size:13px;font-weight:600;margin-top:2px;}
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">Finanzas<span>Hogar</span></div>
+    <div class="login-sub">Selecciona tu perfil para continuar</div>
+    <div class="user-list" id="userLoginList"></div>
+    <div class="pin-row">
+      <input class="form-input" id="loginPin" type="password" placeholder="PIN" maxlength="6" style="flex:1" onkeydown="if(event.key==='Enter')doLogin()">
+      <button class="btn btn-primary" onclick="doLogin()">Entrar</button>
+    </div>
+  </div>
+</div>
+
+<div id="appShell">
+  <aside class="sidebar-desktop">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-text">Finanzas<span>Hogar</span></div>
+      <div class="sidebar-logo-sub">Control familiar · COP</div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="snav-section">
+        <div class="snav-title">Principal</div>
+        <div class="snav-item active" onclick="goPage('dashboard')" data-page="dashboard"><span>Dashboard</span></div>
+        <div class="snav-item" onclick="goPage('gastos')" data-page="gastos"><span>Gastos</span></div>
+        <div class="snav-item" onclick="goPage('ingresos')" data-page="ingresos"><span>Ingresos</span></div>
+        <div class="snav-item" onclick="goPage('prestamos')" data-page="prestamos"><span>Préstamos</span></div>
+        <div class="snav-item" onclick="goPage('tarjetas')" data-page="tarjetas"><span>Tarjetas</span></div>
+        <div class="snav-item" onclick="goPage('porra')" data-page="porra"><span>Porra / San</span></div>
+        <div class="snav-item" onclick="goPage('alertas')" data-page="alertas"><span>Alertas</span></div>
+      </div>
+      <div class="snav-section" id="adminNavDesk">
+        <div class="snav-title">Admin</div>
+        <div class="snav-item" onclick="goPage('usuarios')" data-page="usuarios"><span>Usuarios</span></div>
+      </div>
+      <div class="snav-section">
+        <div class="snav-title">Cuenta</div>
+        <div class="snav-item" onclick="goPage('perfil')" data-page="perfil"><span>Mi perfil</span></div>
+        <div class="snav-item" onclick="logout()"><span>Cerrar sesión</span></div>
+      </div>
+    </nav>
+  </aside>
+
+  <div class="main-shell">
+    <header class="topbar">
+      <div class="topbar-title" id="topbarTitle">Dashboard</div>
+      <div class="topbar-right">
+        <div class="month-pill">
+          <select id="mesActual" onchange="renderAll()"></select>
+          <select id="anoActual" onchange="renderAll()"></select>
+        </div>
+      </div>
+    </header>
+
+    <div class="main-content" id="mainContent">
+
+      <div class="page active" id="page-dashboard">
+        <div class="stats-grid" id="statsRow"></div>
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-header"><div><div class="card-title">Distribución de gastos</div><div class="card-sub" id="donutSub"></div></div></div>
+          <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+            <div class="donut-wrap">
+              <svg width="120" height="120" viewBox="0 0 120 120">
+                <circle cx="60" cy="60" r="46" fill="none" stroke="var(--bg3)" stroke-width="14"/>
+                <g id="donutArcs"></g>
+              </svg>
+              <div class="donut-center"><div style="font-size:10px;color:var(--text3)">total</div><div style="font-size:16px;font-weight:700" id="donutTotal"></div></div>
+            </div>
+            <div style="flex:1;min-width:130px" id="donutLegend"></div>
+          </div>
+        </div>
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-header"><div class="card-title">Balance por persona</div></div>
+          <div id="balancePersonas"></div>
+        </div>
+        <div id="alertasDash"></div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Últimos movimientos</div><button class="btn btn-ghost btn-sm" onclick="goPage('gastos')">Ver todos</button></div>
+          <div id="recentList"></div>
+        </div>
+      </div>
+
+      <div class="page" id="page-gastos">
+        <div class="sec-header"><div class="sec-title">Gastos</div><button class="btn btn-primary btn-sm" onclick="openModalGasto()">+ Registrar</button></div>
+        <div class="chips" id="catChips"></div>
+        <div class="card"><div id="gastosList"></div></div>
+      </div>
+
+      <div class="page" id="page-ingresos">
+        <div class="sec-header"><div class="sec-title">Ingresos</div><button class="btn btn-primary btn-sm" onclick="openModalIngreso()">+ Registrar</button></div>
+        <div class="stats-grid" id="ingresosStats"></div>
+        <div class="card"><div id="ingresosList"></div></div>
+      </div>
+
+      <div class="page" id="page-prestamos">
+        <div class="sec-header"><div class="sec-title">Préstamos y deudas</div><button class="btn btn-primary btn-sm" onclick="openModalPrestamo()">+ Agregar</button></div>
+        <div id="prestamosContent"></div>
+      </div>
+
+      <div class="page" id="page-tarjetas">
+        <div class="sec-header"><div class="sec-title">Extractos de tarjeta</div></div>
+        <div class="tabs">
+          <div class="tab active" onclick="switchTabT('cargar',this)">1· Cargar</div>
+          <div class="tab" onclick="switchTabT('asignar',this)">2· Asignar</div>
+          <div class="tab" onclick="switchTabT('cargos',this)">3· Cargos fijos</div>
+          <div class="tab" onclick="switchTabT('resumen',this)">4· Resumen</div>
+        </div>
+        <div id="tCargar">
+          <div class="drop-zone" onclick="document.getElementById('pdfFile').click()"
+               ondragover="event.preventDefault();this.classList.add('drag')"
+               ondragleave="this.classList.remove('drag')"
+               ondrop="handleDropPDF(event)">
+            <div style="font-size:40px;margin-bottom:10px">📄</div>
+            <div style="font-size:15px;font-weight:600;margin-bottom:4px">Sube tu extracto de tarjeta</div>
+            <div style="font-size:12px;color:var(--text3)">Arrastra el PDF o toca para seleccionar</div>
+            <input type="file" id="pdfFile" accept=".pdf" style="display:none" onchange="handlePDF(this)">
+          </div>
+          <div id="pdfPasswordWrap" style="display:none;margin-top:12px">
+            <div style="display:flex;gap:8px">
+              <input class="form-input" id="pdfPassword" type="password" placeholder="Contraseña del PDF" style="flex:1" onkeydown="if(event.key==='Enter')reintentarPDF()">
+              <button class="btn btn-primary" onclick="reintentarPDF()">Desbloquear</button>
+            </div>
+          </div>
+          <div id="pdfStatus" style="display:none;margin-top:12px"></div>
+          <div id="csvPreview" style="margin-top:12px"></div>
+        </div>
+        <div id="tAsignar" style="display:none">
+          <div class="card">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+              <span style="font-size:12px;color:var(--text2)">Asignar todo a:</span>
+              <select id="asignarTodosSelect" class="form-select" style="width:auto;padding:5px 10px;font-size:12px"><option value="">— elegir —</option></select>
+              <button class="btn btn-ghost btn-sm" onclick="asignarTodos()">Aplicar a todos sin asignar</button>
+            </div>
+            <div id="csvAsignar"></div>
+          </div>
+          <div style="margin-top:12px"><button class="btn btn-ghost btn-sm" onclick="guardarMovimientosAsignados()">Guardar y continuar →</button></div>
+        </div>
+        <div id="tCargos" style="display:none">
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-header"><div class="card-title">Agregar cargo fijo</div></div>
+            <div class="form-row" style="margin-bottom:10px">
+              <div class="form-group" style="margin-bottom:0"><label class="form-label">Descripción</label><input class="form-input" id="cfDesc" placeholder="Ej: Cuota de manejo"></div>
+              <div class="form-group" style="margin-bottom:0"><label class="form-label">Monto (COP)</label><input class="form-input" id="cfMonto" type="number" inputmode="numeric" placeholder="0"></div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Tipo de reparto</label>
+              <select class="form-select" id="cfTipo">
+                <option value="proporcional">Proporcional al consumo de cada uno</option>
+                <option value="igualitario">Igualitario (partes iguales)</option>
+              </select>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="agregarCargoFijo()">+ Agregar cargo</button>
+          </div>
+          <div class="card"><div class="card-header"><div class="card-title">Cargos registrados</div></div><div id="cargosFijosItems"></div></div>
+        </div>
+        <div id="tResumen" style="display:none"><div id="csvResumen"></div></div>
+      </div>
+
+      <div class="page" id="page-alertas">
+        <div class="sec-header"><div class="sec-title">Alertas y vencimientos</div></div>
+        <div class="card"><div class="card-header"><div class="card-title">⚠️ Alertas activas</div></div><div id="alertasActivas"></div></div>
+      </div>
+
+      <div class="page" id="page-usuarios">
+        <div class="sec-header"><div class="sec-title">Usuarios</div><button class="btn btn-primary btn-sm" onclick="openModalUsuario()">+ Crear</button></div>
+        <div id="usuariosGrid" style="display:grid;gap:10px"></div>
+      </div>
+
+      <div class="page" id="page-porra">
+        <div class="sec-header"><div class="sec-title">🏆 Porras / San</div><button class="btn btn-primary btn-sm" onclick="openModalPorra()">+ Nueva</button></div>
+        <div id="porrasList"></div>
+        <div id="porraDetalle" style="display:none"></div>
+      </div>
+
+      <div class="page" id="page-perfil">
+        <div class="card">
+          <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
+            <div class="av av-lg" id="perfilAvatar"></div>
+            <div><div id="perfilName" style="font-size:18px;font-weight:700"></div><div id="perfilRole" style="font-size:12px;color:var(--text3)"></div></div>
+          </div>
+          <div class="sep"></div>
+          <div style="margin-top:16px">
+            <div class="form-group"><label class="form-label">Nombre</label><input class="form-input" id="pfNombre"></div>
+            <div class="form-group"><label class="form-label">Correo</label><input class="form-input" id="pfEmail" type="email"></div>
+            <div class="form-group"><label class="form-label">Correo de alertas</label><input class="form-input" id="pfEmailAlertas" type="email"></div>
+            <div class="form-group"><label class="form-label">Cambiar PIN</label><div class="form-row"><input class="form-input" id="pfPinActual" type="password" placeholder="PIN actual"><input class="form-input" id="pfPinNuevo" type="password" placeholder="Nuevo PIN"></div></div>
+            <button class="btn btn-primary" onclick="savePerfil()">Guardar cambios</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <nav class="bottom-nav">
+      <div class="nav-btn active" onclick="goPage('dashboard')" data-page="dashboard">Inicio</div>
+      <div class="nav-btn" onclick="goPage('gastos')" data-page="gastos">Gastos</div>
+      <div class="nav-btn" onclick="goPage('ingresos')" data-page="ingresos">Ingresos</div>
+      <div class="nav-btn" onclick="goPage('prestamos')" data-page="prestamos">Deudas</div>
+      <div class="nav-btn" onclick="toggleMasMenu()" id="navMasBtn">Más</div>
+    </nav>
+
+    <div id="masMenu" style="display:none;position:fixed;bottom:calc(var(--nav-h) + 8px);right:8px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);padding:8px;z-index:200;min-width:180px;box-shadow:var(--sh)">
+      <div onclick="goPage('porra');closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px">Porra / San</div>
+      <div onclick="goPage('tarjetas');closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px">Tarjetas</div>
+      <div onclick="goPage('alertas');closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px">Alertas</div>
+      <div onclick="goPage('usuarios');closeMasMenu()" id="masUsuariosItem" style="padding:10px 12px;cursor:pointer;font-size:13px">Usuarios</div>
+      <div style="height:1px;background:var(--border);margin:4px 0"></div>
+      <div onclick="goPage('perfil');closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px">Mi perfil</div>
+      <div onclick="logout();closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px;color:var(--red)">Cerrar sesión</div>
+    </div>
+    <div id="masOverlay" style="display:none;position:fixed;inset:0;z-index:199" onclick="closeMasMenu()"></div>
+  </div>
+</div>
+
+<button class="fab" id="fabBtn" onclick="openModalGasto()" style="display:none" title="Agregar gasto">+</button>
+
+<div class="modal-overlay" id="mGasto"><div class="modal">
+  <div class="modal-handle"></div>
+  <div class="modal-title" id="mGastoTitle">Nuevo gasto</div>
+  <div class="form-group"><label class="form-label">Descripción</label><input class="form-input" id="gDesc"></div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Monto (COP)</label><input class="form-input" id="gMonto" type="number" inputmode="numeric"></div>
+    <div class="form-group"><label class="form-label">Categoría</label><select class="form-select" id="gCat"></select></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Responsable</label><select class="form-select" id="gResp"></select></div>
+    <div class="form-group"><label class="form-label">Fecha</label><input class="form-input" id="gFecha" type="date"></div>
+  </div>
+  <div class="form-group"><label class="form-label">Tipo</label>
+    <select class="form-select" id="gTipo" onchange="document.getElementById('gCuotaGrp').style.display=this.value==='cuota'?'':'none'">
+      <option value="unico">Único</option><option value="mensual">Mensual recurrente</option><option value="cuota">Cuota de préstamo</option>
+    </select>
+  </div>
+  <div class="form-row" id="gCuotaGrp" style="display:none">
+    <div class="form-group"><label class="form-label">Cuota N°</label><input class="form-input" id="gCuotaA" type="number" min="1"></div>
+    <div class="form-group"><label class="form-label">De un total de</label><input class="form-input" id="gCuotaT" type="number" min="1"></div>
+  </div>
+  <input type="hidden" id="gEditId">
+  <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('mGasto')">Cancelar</button><button class="btn btn-primary" onclick="saveGasto()">Guardar</button></div>
+</div></div>
+
+<div class="modal-overlay" id="mIngreso"><div class="modal">
+  <div class="modal-handle"></div>
+  <div class="modal-title">Registrar ingreso</div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Persona</label><select class="form-select" id="iPersona"></select></div>
+    <div class="form-group"><label class="form-label">Monto (COP)</label><input class="form-input" id="iMonto" type="number"></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Fuente</label><input class="form-input" id="iFuente"></div>
+    <div class="form-group"><label class="form-label">Fecha</label><input class="form-input" id="iFecha" type="date"></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('mIngreso')">Cancelar</button><button class="btn btn-primary" onclick="saveIngreso()">Guardar</button></div>
+</div></div>
+
+<div class="modal-overlay" id="mPrestamo"><div class="modal">
+  <div class="modal-handle"></div>
+  <div class="modal-title">Nuevo préstamo / deuda</div>
+  <div class="form-group"><label class="form-label">Nombre</label><input class="form-input" id="pNombre"></div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Monto total</label><input class="form-input" id="pMonto" type="number"></div>
+    <div class="form-group"><label class="form-label">Cuota mensual</label><input class="form-input" id="pCuota" type="number"></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Cuotas totales</label><input class="form-input" id="pCuotas" type="number" min="1"></div>
+    <div class="form-group"><label class="form-label">Pagadas</label><input class="form-input" id="pPagadas" type="number" min="0"></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Responsable</label><select class="form-select" id="pResp"></select></div>
+    <div class="form-group"><label class="form-label">Día de pago</label><input class="form-input" id="pDiaPago" type="number" min="1" max="31"></div>
+  </div>
+  <div class="form-group"><label class="form-label">Fecha inicio</label><input class="form-input" id="pFecha" type="date"></div>
+  <input type="hidden" id="pEditId">
+  <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('mPrestamo')">Cancelar</button><button class="btn btn-primary" onclick="savePrestamo()">Guardar</button></div>
+</div></div>
+
+<div class="modal-overlay" id="mUsuario"><div class="modal">
+  <div class="modal-handle"></div>
+  <div class="modal-title">Crear / editar usuario</div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Nombre</label><input class="form-input" id="uNombre"></div>
+    <div class="form-group"><label class="form-label">Correo</label><input class="form-input" id="uEmail" type="email"></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Rol</label><select class="form-select" id="uRol"><option value="admin">Admin</option><option value="miembro">Miembro</option><option value="consulta">Solo consulta</option></select></div>
+    <div class="form-group"><label class="form-label">PIN</label><input class="form-input" id="uPin" type="password" maxlength="6"></div>
+  </div>
+  <div class="form-group"><label class="form-label">Color</label><div class="color-picker" id="colorPicker"></div></div>
+  <input type="hidden" id="uEditId">
+  <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('mUsuario')">Cancelar</button><button class="btn btn-primary" onclick="saveUsuario()">Guardar</button></div>
+</div></div>
+
+<div class="modal-overlay" id="mPorra"><div class="modal">
+  <div class="modal-handle"></div>
+  <div class="modal-title">Nueva Porra / San</div>
+  <div class="form-group"><label class="form-label">Nombre del grupo</label><input class="form-input" id="pNombrePorra"></div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Cuota por período</label><input class="form-input" id="pCuotaPorra" type="number"></div>
+    <div class="form-group"><label class="form-label">Frecuencia</label><select class="form-select" id="pFrecuencia"><option value="semanal">Semanal</option><option value="quincenal">Quincenal</option><option value="mensual" selected>Mensual</option></select></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Fecha inicio</label><input class="form-input" id="pFechaInicio" type="date"></div>
+    <div class="form-group"><label class="form-label">Modalidad</label><select class="form-select" id="pModalidad"><option value="sorteo">Sorteo aleatorio</option><option value="orden">Orden fijo</option><option value="libre">Libre</option></select></div>
+  </div>
+  <div class="form-group"><label class="form-label">Descripción / notas</label><textarea class="form-input" id="pDescripcion" rows="2"></textarea></div>
+  <div class="sep"></div>
+  <div class="form-group">
+    <label class="form-label">Participantes</label>
+    <div id="pParticipantesCheck" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px"></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('mPorra')">Cancelar</button><button class="btn btn-primary" onclick="savePorra()">Crear porra</button></div>
+</div></div>
+
+<div id="notifCont"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>
