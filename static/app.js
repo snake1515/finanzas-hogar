@@ -157,7 +157,7 @@ function initMonthSelectors() {
    ══════════════════════════════════════ */
 const TITULOS = { dashboard:"Dashboard", gastos:"Gastos", ingresos:"Ingresos", prestamos:"Préstamos",
   tarjetas:"Tarjetas", alertas:"Alertas", usuarios:"Usuarios", porra:"Porra / San", perfil:"Mi perfil",
-  ahorro:"Ahorro", inversion:"Inversión" };
+  ahorro:"Ahorro", inversion:"Inversión", nomina:"Nómina" };
 
 function goPage(page) {
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
@@ -173,6 +173,7 @@ function goPage(page) {
   if (page === "alertas") renderAlertas();
   if (page === "ahorro") renderAhorros();
   if (page === "inversion") renderInversiones();
+  if (page === "nomina") renderNomina();
 }
 function toggleMasMenu() {
   const m = document.getElementById("masMenu"), o = document.getElementById("masOverlay");
@@ -928,6 +929,171 @@ async function eliminarInversion(id) {
 }
 
 /* ══════════════════════════════════════
+   NÓMINA — Descuentos del salario (Colombia 2026)
+   ══════════════════════════════════════ */
+const NOMINA_2026 = { smlv: 1750905, auxTransporte: 249095, uvt: 52374 };
+STATE.nomina = { ingresos: [], descuentos: [] };
+
+function nomFmt(n) { return "$" + Math.round(n || 0).toLocaleString("es-CO"); }
+
+function agregarIngresoNomina() {
+  STATE.nomina.ingresos.push({ id: uid(), desc: "", monto: 0, afectaIBC: false });
+  renderNomina();
+}
+function agregarDescuentoNomina() {
+  STATE.nomina.descuentos.push({ id: uid(), desc: "", monto: 0 });
+  renderNomina();
+}
+function quitarIngresoNomina(id) { STATE.nomina.ingresos = STATE.nomina.ingresos.filter(x => x.id !== id); renderNomina(); }
+function quitarDescuentoNomina(id) { STATE.nomina.descuentos = STATE.nomina.descuentos.filter(x => x.id !== id); renderNomina(); }
+
+function calcularNomina(salarioBase, tieneAux, ingresos, descuentos) {
+  const auxTransporte = tieneAux ? NOMINA_2026.auxTransporte : 0;
+  const ingresosExtraTotal = ingresos.reduce((s, i) => s + (i.monto || 0), 0);
+  const ingresosExtraIBC = ingresos.filter(i => i.afectaIBC).reduce((s, i) => s + (i.monto || 0), 0);
+
+  // Ingreso Base de Cotización (nunca incluye el auxilio de transporte)
+  const ibc = salarioBase + ingresosExtraIBC;
+
+  const salud = ibc * 0.04;
+  const pension = ibc * 0.04;
+
+  // Fondo de Solidaridad Pensional — aplica desde 4 SMLV
+  const numSmlv = ibc / NOMINA_2026.smlv;
+  let fspPct = 0;
+  if (numSmlv >= 20) fspPct = 0.02;
+  else if (numSmlv >= 19) fspPct = 0.018;
+  else if (numSmlv >= 18) fspPct = 0.016;
+  else if (numSmlv >= 17) fspPct = 0.014;
+  else if (numSmlv >= 16) fspPct = 0.012;
+  else if (numSmlv >= 4) fspPct = 0.01;
+  const fsp = ibc * fspPct;
+
+  // Retención en la fuente — estimado simplificado (Art. 383 ET, procedimiento 1)
+  const baseTrasAportes = Math.max(0, ibc - salud - pension - fsp);
+  const rentaExenta = baseTrasAportes * 0.25;
+  const baseGravable = Math.max(0, baseTrasAportes - rentaExenta);
+  const baseUVT = baseGravable / NOMINA_2026.uvt;
+  let retUVT = 0;
+  if (baseUVT > 2300) retUVT = (baseUVT - 2300) * 0.39 + 522;
+  else if (baseUVT > 945) retUVT = (baseUVT - 945) * 0.37 + 216;
+  else if (baseUVT > 640) retUVT = (baseUVT - 640) * 0.35 + 162;
+  else if (baseUVT > 360) retUVT = (baseUVT - 360) * 0.33 + 69;
+  else if (baseUVT > 150) retUVT = (baseUVT - 150) * 0.28 + 10;
+  else if (baseUVT > 95) retUVT = (baseUVT - 95) * 0.19;
+  const retencion = retUVT * NOMINA_2026.uvt;
+
+  const descuentosExtraTotal = descuentos.reduce((s, d) => s + (d.monto || 0), 0);
+  const totalDevengado = salarioBase + auxTransporte + ingresosExtraTotal;
+  const totalLey = salud + pension + fsp + retencion;
+  const totalDeducido = totalLey + descuentosExtraTotal;
+  const netoAPagar = totalDevengado - totalDeducido;
+
+  return { auxTransporte, ibc, numSmlv, salud, pension, fsp, fspPct, retencion, ingresosExtraTotal,
+    descuentosExtraTotal, totalDevengado, totalLey, totalDeducido, netoAPagar };
+}
+
+function renderNomina() {
+  const salarioInput = document.getElementById("nomSalario");
+  const salarioBase = parseFloat(salarioInput.value) || 0;
+  const auxCheck = document.getElementById("nomAuxTransporte");
+
+  // Auto-marcar auxilio si el salario califica (≤ 2 SMLV) y el usuario no lo ha tocado a mano
+  if (salarioBase > 0 && auxCheck.dataset.touched !== "1") {
+    auxCheck.checked = salarioBase <= NOMINA_2026.smlv * 2;
+  }
+  if (!auxCheck.dataset.bound) {
+    auxCheck.addEventListener("change", () => { auxCheck.dataset.touched = "1"; });
+    auxCheck.dataset.bound = "1";
+  }
+
+  // Filas de ingresos adicionales
+  const ingCont = document.getElementById("nomIngresosList");
+  document.getElementById("nomIngresosEmpty").style.display = STATE.nomina.ingresos.length ? "none" : "";
+  ingCont.innerHTML = STATE.nomina.ingresos.map(row => `
+    <div class="nom-row">
+      <input type="text" class="form-input" placeholder="Ej: Comisión" value="${row.desc}"
+        oninput="STATE.nomina.ingresos.find(x=>x.id==='${row.id}').desc=this.value">
+      <input type="number" class="form-input" inputmode="numeric" placeholder="0" value="${row.monto || ""}"
+        oninput="STATE.nomina.ingresos.find(x=>x.id==='${row.id}').monto=parseFloat(this.value)||0;renderNomina()">
+      <label class="nom-check"><input type="checkbox" ${row.afectaIBC ? "checked" : ""}
+        onchange="STATE.nomina.ingresos.find(x=>x.id==='${row.id}').afectaIBC=this.checked;renderNomina()">Salud/pensión</label>
+      <button class="btn btn-danger btn-icon" onclick="quitarIngresoNomina('${row.id}')">✕</button>
+    </div>`).join("");
+
+  // Filas de descuentos adicionales
+  const descCont = document.getElementById("nomDescuentosList");
+  document.getElementById("nomDescuentosEmpty").style.display = STATE.nomina.descuentos.length ? "none" : "";
+  descCont.innerHTML = STATE.nomina.descuentos.map(row => `
+    <div class="nom-row">
+      <input type="text" class="form-input" placeholder="Ej: Libranza" value="${row.desc}"
+        oninput="STATE.nomina.descuentos.find(x=>x.id==='${row.id}').desc=this.value">
+      <input type="number" class="form-input" inputmode="numeric" placeholder="0" value="${row.monto || ""}"
+        oninput="STATE.nomina.descuentos.find(x=>x.id==='${row.id}').monto=parseFloat(this.value)||0;renderNomina()">
+      <button class="btn btn-danger btn-icon" onclick="quitarDescuentoNomina('${row.id}')">✕</button>
+    </div>`).join("");
+
+  const r = calcularNomina(salarioBase, auxCheck.checked, STATE.nomina.ingresos, STATE.nomina.descuentos);
+  const cont = document.getElementById("nomResultado");
+
+  if (!salarioBase) {
+    cont.innerHTML = `<div class="empty"><div class="icon">🧮</div><p>Ingresa el salario básico para ver el desglose</p></div>`;
+    return;
+  }
+
+  cont.innerHTML = `
+    <div class="card-header"><div class="card-title">Desglose de nómina</div><div class="card-sub">${STATE.user?.nombre || ""} · ${new Date().toLocaleDateString("es-CO",{month:"long",year:"numeric"})}</div></div>
+    <div id="reciboNomina">
+      <div class="nom-line"><span class="nl-label">Salario básico</span><span>${nomFmt(salarioBase)}</span></div>
+      ${r.auxTransporte ? `<div class="nom-line"><span class="nl-label">Auxilio de transporte</span><span>${nomFmt(r.auxTransporte)}</span></div>` : ""}
+      ${STATE.nomina.ingresos.filter(i=>i.monto>0).map(i => `<div class="nom-line"><span class="nl-label">${i.desc || "Ingreso adicional"}</span><span style="color:var(--green)">+${nomFmt(i.monto)}</span></div>`).join("")}
+      <div class="nom-line total"><span>Total devengado</span><span>${nomFmt(r.totalDevengado)}</span></div>
+      <div class="sep"></div>
+      <div class="nom-line"><span><span class="nl-label">Salud (4%)</span><div class="nl-sub">IBC ${nomFmt(r.ibc)}</div></span><span style="color:var(--red)">-${nomFmt(r.salud)}</span></div>
+      <div class="nom-line"><span class="nl-label">Pensión (4%)</span><span style="color:var(--red)">-${nomFmt(r.pension)}</span></div>
+      ${r.fsp > 0 ? `<div class="nom-line"><span><span class="nl-label">Fondo Solidaridad Pensional (${(r.fspPct*100).toFixed(1)}%)</span><div class="nl-sub">Aplica desde 4 SMLV · devengas ${r.numSmlv.toFixed(1)} SMLV</div></span><span style="color:var(--red)">-${nomFmt(r.fsp)}</span></div>` : ""}
+      ${r.retencion > 0 ? `<div class="nom-line"><span><span class="nl-label">Retención en la fuente</span><div class="nl-sub">Estimado, Art. 383 ET</div></span><span style="color:var(--red)">-${nomFmt(r.retencion)}</span></div>` : ""}
+      ${STATE.nomina.descuentos.filter(d=>d.monto>0).map(d => `<div class="nom-line"><span class="nl-label">${d.desc || "Descuento adicional"}</span><span style="color:var(--red)">-${nomFmt(d.monto)}</span></div>`).join("")}
+      <div class="nom-line total"><span>Neto a pagar</span><span style="color:var(--green)">${nomFmt(r.netoAPagar)}</span></div>
+    </div>
+    <div style="font-size:10px;color:var(--text3);margin-top:10px;line-height:1.5">
+      Salud y pensión (4%+4%) son de ley. El Fondo de Solidaridad Pensional aplica solo si el IBC ≥ 4 SMLV ($${(NOMINA_2026.smlv*4).toLocaleString("es-CO")}).
+      La retención en la fuente es un estimado del procedimiento 1 y puede variar según deducciones adicionales (dependientes, salud prepagada, intereses de vivienda, etc.) — no reemplaza el cálculo de nómina de tu empleador.
+    </div>`;
+}
+
+async function descargarReciboNomina() {
+  const salarioBase = parseFloat(document.getElementById("nomSalario")?.value) || 0;
+  if (!salarioBase) return notify("Ingresa el salario básico primero", "error");
+  if (typeof html2canvas === "undefined") return notify("No se pudo cargar el generador de imágenes", "error");
+  const el = document.getElementById("reciboNomina");
+  notify("Generando imagen…", "info");
+  try {
+    const canvas = await html2canvas(el, { backgroundColor: "#111520", scale: 2 });
+    canvas.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `nomina-${new Date().toISOString().slice(0,10)}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      // En móviles con Web Share API disponible, ofrece compartir directo (incluye WhatsApp)
+      if (navigator.share && navigator.canShare) {
+        const file = new File([blob], "nomina.png", { type: "image/png" });
+        if (navigator.canShare({ files: [file] })) {
+          navigator.share({ files: [file], title: "Desglose de nómina" }).catch(() => {});
+        }
+      }
+      notify("Imagen lista", "success");
+    }, "image/png");
+  } catch (e) {
+    notify("No se pudo generar la imagen", "error");
+  }
+}
+
+/* ══════════════════════════════════════
    ARRANQUE
    ══════════════════════════════════════ */
 (async function start() {
@@ -948,4 +1114,6 @@ async function eliminarInversion(id) {
     initLogin();
   }
 })();
+
+
 
