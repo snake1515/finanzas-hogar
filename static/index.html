@@ -160,6 +160,17 @@ body{flex-direction:row;}
 .loan-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;}
 .loan-stat .ls-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;}
 .loan-stat .ls-val{font-size:13px;font-weight:600;margin-top:2px;}
+.btn-icon{width:32px;height:32px;padding:0;flex-shrink:0;}
+.nom-row{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);}
+.nom-row:last-child{border-bottom:none;}
+.nom-row input[type="text"]{flex:1.4;}
+.nom-row input[type="number"]{flex:1;}
+.nom-row .nom-check{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text3);white-space:nowrap;}
+.nom-line{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;}
+.nom-line:last-child{border-bottom:none;}
+.nom-line .nl-label{color:var(--text2);}
+.nom-line .nl-sub{font-size:10px;color:var(--text3);margin-top:1px;}
+.nom-line.total{font-size:15px;font-weight:700;padding-top:12px;border-top:1.5px solid var(--border2);border-bottom:none;margin-top:4px;}
 </style>
 </head>
 <body>
@@ -193,6 +204,7 @@ body{flex-direction:row;}
         <div class="snav-item" onclick="goPage('porra')" data-page="porra"><span>Porra / San</span></div>
         <div class="snav-item" onclick="goPage('ahorro')" data-page="ahorro"><span>Ahorro</span></div>
         <div class="snav-item" onclick="goPage('inversion')" data-page="inversion"><span>Inversión</span></div>
+        <div class="snav-item" onclick="goPage('nomina')" data-page="nomina"><span>Nómina</span></div>
         <div class="snav-item" onclick="goPage('alertas')" data-page="alertas"><span>Alertas</span></div>
       </div>
       <div class="snav-section" id="adminNavDesk">
@@ -350,6 +362,43 @@ body{flex-direction:row;}
         <div class="card"><div id="inversionesList"></div></div>
       </div>
 
+      <div class="page" id="page-nomina">
+        <div class="sec-header"><div class="sec-title">🧮 Nómina — Descuentos del salario</div></div>
+
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-header"><div><div class="card-title">Salario mínimo legal vigente 2026</div><div class="card-sub">Decretos 1469, 1470 de 2025 y 0159 de 2026</div></div></div>
+          <div class="stats-grid" style="margin-bottom:0">
+            <div class="stat-card"><div class="stat-label">SMLV mensual</div><div class="stat-value">$1.750.905</div></div>
+            <div class="stat-card"><div class="stat-label">Auxilio de transporte</div><div class="stat-value">$249.095</div></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-header"><div class="card-title">Tu salario</div></div>
+          <div class="form-group"><label class="form-label">Salario básico mensual (COP)</label><input class="form-input" id="nomSalario" type="number" inputmode="numeric" placeholder="3000000" oninput="renderNomina()"></div>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2)">
+            <input type="checkbox" id="nomAuxTransporte" onchange="renderNomina()" style="width:16px;height:16px">
+            Tiene derecho a auxilio de transporte (aplica si el salario es ≤ 2 SMLV)
+          </label>
+        </div>
+
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-header"><div class="card-title">Ingresos adicionales</div><button class="btn btn-ghost btn-sm" onclick="agregarIngresoNomina()">+ Agregar</button></div>
+          <div id="nomIngresosList"></div>
+          <div class="empty" id="nomIngresosEmpty" style="padding:14px"><p>Bonificaciones, comisiones, horas extra...</p></div>
+        </div>
+
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-header"><div class="card-title">Descuentos adicionales</div><button class="btn btn-ghost btn-sm" onclick="agregarDescuentoNomina()">+ Agregar</button></div>
+          <div id="nomDescuentosList"></div>
+          <div class="empty" id="nomDescuentosEmpty" style="padding:14px"><p>Libranzas, embargos, préstamos de empresa...</p></div>
+        </div>
+
+        <div class="card" id="nomResultado" style="margin-bottom:12px"></div>
+
+        <button class="btn btn-primary" style="width:100%" onclick="descargarReciboNomina()">📷 Generar imagen para compartir</button>
+      </div>
+
       <div class="page" id="page-perfil">
         <div class="card">
           <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
@@ -381,6 +430,7 @@ body{flex-direction:row;}
       <div onclick="goPage('porra');closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px">Porra / San</div>
       <div onclick="goPage('ahorro');closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px">Ahorro</div>
       <div onclick="goPage('inversion');closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px">Inversión</div>
+      <div onclick="goPage('nomina');closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px">Nómina</div>
       <div onclick="goPage('tarjetas');closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px">Tarjetas</div>
       <div onclick="goPage('alertas');closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px">Alertas</div>
       <div onclick="goPage('usuarios');closeMasMenu()" id="masUsuariosItem" style="padding:10px 12px;cursor:pointer;font-size:13px">Usuarios</div>
@@ -536,9 +586,11 @@ body{flex-direction:row;}
 
 <div id="notifCont"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>
+
 
 
 
