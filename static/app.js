@@ -156,7 +156,8 @@ function initMonthSelectors() {
    NAVEGACIÓN
    ══════════════════════════════════════ */
 const TITULOS = { dashboard:"Dashboard", gastos:"Gastos", ingresos:"Ingresos", prestamos:"Préstamos",
-  tarjetas:"Tarjetas", alertas:"Alertas", usuarios:"Usuarios", porra:"Porra / San", perfil:"Mi perfil" };
+  tarjetas:"Tarjetas", alertas:"Alertas", usuarios:"Usuarios", porra:"Porra / San", perfil:"Mi perfil",
+  ahorro:"Ahorro", inversion:"Inversión" };
 
 function goPage(page) {
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
@@ -170,6 +171,8 @@ function goPage(page) {
   if (page === "porra") renderPorras();
   if (page === "tarjetas") renderTarjetas();
   if (page === "alertas") renderAlertas();
+  if (page === "ahorro") renderAhorros();
+  if (page === "inversion") renderInversiones();
 }
 function toggleMasMenu() {
   const m = document.getElementById("masMenu"), o = document.getElementById("masOverlay");
@@ -195,6 +198,7 @@ function renderAll() {
 }
 
 function renderDashboard() {
+  renderMercado();
   const totalGastos = STATE.gastos.reduce((s, g) => s + g.monto, 0);
   const totalIngresos = STATE.ingresos.reduce((s, i) => s + i.monto, 0);
   const balance = totalIngresos - totalGastos;
@@ -759,6 +763,168 @@ async function savePorra() {
     renderPorras();
     notify("Porra creada", "success");
   } catch (e) { notify(e.message, "error"); }
+}
+
+/* ══════════════════════════════════════
+   MERCADO — TRM y precio del oro en el dashboard
+   ══════════════════════════════════════ */
+async function renderMercado() {
+  const cont = document.getElementById("mercadoRow");
+  cont.innerHTML = `<div class="stat-card"><div class="stat-label">Dólar (TRM)</div><div class="stat-value">…</div></div>
+    <div class="stat-card"><div class="stat-label">Oro (gramo)</div><div class="stat-value">…</div></div>`;
+  try {
+    const [trm, oro] = await Promise.all([api("/mercado/trm"), api("/mercado/oro")]);
+    cont.innerHTML = `
+      <div class="stat-card">
+        <div class="stat-label">Dólar (TRM oficial)</div>
+        <div class="stat-value">${cop(trm.valor)}</div>
+        <div class="stat-note">Vigente desde ${trm.vigencia_desde ? trm.vigencia_desde.slice(0,10) : "—"}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Oro (gramo, estimado)</div>
+        <div class="stat-value">${cop(oro.precio_gramo)}</div>
+        <div class="stat-note">Spot internacional + TRM · no es precio de joyería</div>
+      </div>`;
+  } catch (e) {
+    cont.innerHTML = `<div class="stat-card" style="grid-column:span 2"><div class="stat-label">Datos de mercado</div>
+      <div class="stat-note">No se pudieron cargar en este momento.</div></div>`;
+  }
+}
+
+/* ══════════════════════════════════════
+   AHORRO
+   ══════════════════════════════════════ */
+async function renderAhorros() {
+  const ahorros = await api("/ahorros");
+  const cont = document.getElementById("ahorrosList");
+  cont.innerHTML = ahorros.map(a => {
+    const pct = a.monto_objetivo ? Math.min(100, Math.round((a.saldo_actual / a.monto_objetivo) * 100)) : null;
+    return `<div class="card" style="margin-bottom:10px">
+      <div class="card-header">
+        <div><div class="card-title">${a.nombre}</div>
+          ${a.fecha_limite ? `<div class="card-sub">Meta: ${a.fecha_limite}</div>` : ""}</div>
+        <button class="btn btn-danger btn-sm" onclick="eliminarAhorro('${a.id}')">✕</button>
+      </div>
+      <div class="stat-value" style="color:${a.color}">${cop(a.saldo_actual)}</div>
+      ${a.monto_objetivo ? `
+        <div class="stat-note">de ${cop(a.monto_objetivo)} (${pct}%)</div>
+        <div class="prog"><div class="prog-fill" style="width:${pct}%;background:${a.color}"></div></div>
+      ` : ""}
+      <div style="display:flex;gap:6px;margin-top:10px">
+        <button class="btn btn-primary btn-sm" onclick="openModalMovAhorro('${a.id}','deposito')">+ Depositar</button>
+        <button class="btn btn-ghost btn-sm" onclick="openModalMovAhorro('${a.id}','retiro')">− Retirar</button>
+      </div>
+    </div>`;
+  }).join("") || `<div class="empty"><div class="icon">🐷</div><p>Crea tu primera alcancía de ahorro</p></div>`;
+}
+function openModalAhorro() {
+  document.getElementById("ahNombre").value = "";
+  document.getElementById("ahMontoObjetivo").value = "";
+  document.getElementById("ahFechaLimite").value = "";
+  openModal("mAhorro");
+}
+async function saveAhorro() {
+  const payload = {
+    nombre: document.getElementById("ahNombre").value,
+    monto_objetivo: parseFloat(document.getElementById("ahMontoObjetivo").value) || null,
+    fecha_limite: document.getElementById("ahFechaLimite").value || null,
+  };
+  if (!payload.nombre) return notify("Ponle un nombre a la alcancía", "error");
+  await api("/ahorros", { method: "POST", body: JSON.stringify(payload) });
+  closeModal("mAhorro");
+  renderAhorros();
+  notify("Alcancía creada", "success");
+}
+async function eliminarAhorro(id) {
+  if (!confirm("¿Eliminar esta alcancía y todos sus movimientos?")) return;
+  await api(`/ahorros/${id}`, { method: "DELETE" });
+  renderAhorros();
+}
+function openModalMovAhorro(ahorroId, tipo) {
+  document.getElementById("movAhorroId").value = ahorroId;
+  document.getElementById("movTipo").value = tipo;
+  document.getElementById("mMovAhorroTitle").textContent = tipo === "deposito" ? "Registrar depósito" : "Registrar retiro";
+  document.getElementById("movMonto").value = "";
+  document.getElementById("movFecha").value = new Date().toISOString().slice(0, 10);
+  document.getElementById("movNota").value = "";
+  openModal("mMovAhorro");
+}
+async function saveMovAhorro() {
+  const ahorroId = document.getElementById("movAhorroId").value;
+  const payload = {
+    tipo: document.getElementById("movTipo").value,
+    monto: parseFloat(document.getElementById("movMonto").value || 0),
+    fecha: document.getElementById("movFecha").value,
+    nota: document.getElementById("movNota").value,
+  };
+  if (!payload.monto) return notify("Ingresa un monto", "error");
+  await api(`/ahorros/${ahorroId}/movimientos`, { method: "POST", body: JSON.stringify(payload) });
+  closeModal("mMovAhorro");
+  renderAhorros();
+  notify("Movimiento registrado", "success");
+}
+
+/* ══════════════════════════════════════
+   INVERSIÓN
+   ══════════════════════════════════════ */
+async function renderInversiones() {
+  const inversiones = await api("/inversiones");
+
+  const totalInvertido = inversiones.reduce((s, i) => s + i.precio_compra_total, 0);
+  const totalActual = inversiones.reduce((s, i) => s + (i.valor_actual_total ?? i.precio_compra_total), 0);
+  const diferencia = totalActual - totalInvertido;
+  document.getElementById("inversionResumenCard").innerHTML = `
+    <div class="card-header"><div class="card-title">Resumen del portafolio</div></div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-label">Invertido</div><div class="stat-value">${cop(totalInvertido)}</div></div>
+      <div class="stat-card"><div class="stat-label">Valor actual</div><div class="stat-value">${cop(totalActual)}</div></div>
+      <div class="stat-card"><div class="stat-label">Ganancia/Pérdida</div>
+        <div class="stat-value" style="color:${diferencia>=0?'var(--green)':'var(--red)'}">${cop(diferencia)}</div></div>
+    </div>`;
+
+  document.getElementById("inversionesList").innerHTML = inversiones.map(i => `
+    <div class="list-item">
+      <div class="list-icon" style="background:var(--yellowbg)">${i.tipo_activo === "oro" ? "🥇" : i.tipo_activo === "plata" ? "🥈" : "💰"}</div>
+      <div class="list-body">
+        <div class="list-title">${i.descripcion || i.tipo_activo}</div>
+        <div class="list-sub">${i.cantidad} ${i.unidad} · comprado a ${cop(i.precio_compra_unitario)}/${i.unidad} · ${i.fecha_compra}</div>
+      </div>
+      <div class="list-right">
+        <div class="list-amount">${cop(i.valor_actual_total ?? i.precio_compra_total)}</div>
+        ${i.ganancia_perdida != null ? `<div class="list-meta" style="color:${i.ganancia_perdida>=0?'var(--green)':'var(--red)'}">${i.ganancia_perdida>=0?'+':''}${cop(i.ganancia_perdida)}</div>` : ""}
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="eliminarInversion('${i.id}')">✕</button>
+    </div>`).join("") || `<div class="empty"><div class="icon">📈</div><p>Registra tu primera compra de inversión</p></div>`;
+}
+function openModalInversion() {
+  document.getElementById("invResponsable").innerHTML = STATE.usuarios.map(u => `<option value="${u.id}">${u.nombre}</option>`).join("");
+  document.getElementById("invDescripcion").value = "";
+  document.getElementById("invCantidad").value = "";
+  document.getElementById("invPrecioUnitario").value = "";
+  document.getElementById("invFecha").value = new Date().toISOString().slice(0, 10);
+  document.getElementById("invResponsable").value = STATE.user.id;
+  openModal("mInversion");
+}
+async function saveInversion() {
+  const payload = {
+    tipo_activo: document.getElementById("invTipo").value,
+    unidad: document.getElementById("invUnidad").value,
+    descripcion: document.getElementById("invDescripcion").value,
+    cantidad: parseFloat(document.getElementById("invCantidad").value || 0),
+    precio_compra_unitario: parseFloat(document.getElementById("invPrecioUnitario").value || 0),
+    responsable_id: document.getElementById("invResponsable").value,
+    fecha_compra: document.getElementById("invFecha").value,
+  };
+  if (!payload.cantidad || !payload.precio_compra_unitario) return notify("Completa cantidad y precio", "error");
+  await api("/inversiones", { method: "POST", body: JSON.stringify(payload) });
+  closeModal("mInversion");
+  renderInversiones();
+  notify("Inversión registrada", "success");
+}
+async function eliminarInversion(id) {
+  if (!confirm("¿Eliminar este registro de inversión?")) return;
+  await api(`/inversiones/${id}`, { method: "DELETE" });
+  renderInversiones();
 }
 
 /* ══════════════════════════════════════
