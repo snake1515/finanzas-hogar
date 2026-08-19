@@ -191,6 +191,8 @@ body{flex-direction:row;}
         <div class="snav-item" onclick="goPage('prestamos')" data-page="prestamos"><span>Préstamos</span></div>
         <div class="snav-item" onclick="goPage('tarjetas')" data-page="tarjetas"><span>Tarjetas</span></div>
         <div class="snav-item" onclick="goPage('porra')" data-page="porra"><span>Porra / San</span></div>
+        <div class="snav-item" onclick="goPage('ahorro')" data-page="ahorro"><span>Ahorro</span></div>
+        <div class="snav-item" onclick="goPage('inversion')" data-page="inversion"><span>Inversión</span></div>
         <div class="snav-item" onclick="goPage('alertas')" data-page="alertas"><span>Alertas</span></div>
       </div>
       <div class="snav-section" id="adminNavDesk">
@@ -219,6 +221,7 @@ body{flex-direction:row;}
     <div class="main-content" id="mainContent">
 
       <div class="page active" id="page-dashboard">
+        <div class="stats-grid" id="mercadoRow" style="margin-bottom:10px"></div>
         <div class="stats-grid" id="statsRow"></div>
         <div class="card" style="margin-bottom:12px">
           <div class="card-header"><div><div class="card-title">Distribución de gastos</div><div class="card-sub" id="donutSub"></div></div></div>
@@ -336,6 +339,17 @@ body{flex-direction:row;}
         <div id="porraDetalle" style="display:none"></div>
       </div>
 
+      <div class="page" id="page-ahorro">
+        <div class="sec-header"><div class="sec-title">🐷 Ahorro</div><button class="btn btn-primary btn-sm" onclick="openModalAhorro()">+ Nueva alcancía</button></div>
+        <div id="ahorrosList"></div>
+      </div>
+
+      <div class="page" id="page-inversion">
+        <div class="sec-header"><div class="sec-title">📈 Inversión</div><button class="btn btn-primary btn-sm" onclick="openModalInversion()">+ Registrar compra</button></div>
+        <div class="card" style="margin-bottom:12px" id="inversionResumenCard"></div>
+        <div class="card"><div id="inversionesList"></div></div>
+      </div>
+
       <div class="page" id="page-perfil">
         <div class="card">
           <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
@@ -365,6 +379,8 @@ body{flex-direction:row;}
 
     <div id="masMenu" style="display:none;position:fixed;bottom:calc(var(--nav-h) + 8px);right:8px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);padding:8px;z-index:200;min-width:180px;box-shadow:var(--sh)">
       <div onclick="goPage('porra');closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px">Porra / San</div>
+      <div onclick="goPage('ahorro');closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px">Ahorro</div>
+      <div onclick="goPage('inversion');closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px">Inversión</div>
       <div onclick="goPage('tarjetas');closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px">Tarjetas</div>
       <div onclick="goPage('alertas');closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px">Alertas</div>
       <div onclick="goPage('usuarios');closeMasMenu()" id="masUsuariosItem" style="padding:10px 12px;cursor:pointer;font-size:13px">Usuarios</div>
@@ -475,8 +491,52 @@ body{flex-direction:row;}
   <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('mPorra')">Cancelar</button><button class="btn btn-primary" onclick="savePorra()">Crear porra</button></div>
 </div></div>
 
+<div class="modal-overlay" id="mAhorro"><div class="modal">
+  <div class="modal-handle"></div>
+  <div class="modal-title">Nueva alcancía</div>
+  <div class="form-group"><label class="form-label">Nombre</label><input class="form-input" id="ahNombre" placeholder="Ej: Vacaciones, Fondo de emergencia"></div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Monto objetivo (opcional)</label><input class="form-input" id="ahMontoObjetivo" type="number"></div>
+    <div class="form-group"><label class="form-label">Fecha límite (opcional)</label><input class="form-input" id="ahFechaLimite" type="date"></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('mAhorro')">Cancelar</button><button class="btn btn-primary" onclick="saveAhorro()">Crear alcancía</button></div>
+</div></div>
+
+<div class="modal-overlay" id="mMovAhorro"><div class="modal">
+  <div class="modal-handle"></div>
+  <div class="modal-title" id="mMovAhorroTitle">Registrar movimiento</div>
+  <input type="hidden" id="movAhorroId">
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Tipo</label><select class="form-select" id="movTipo"><option value="deposito">Depósito</option><option value="retiro">Retiro</option></select></div>
+    <div class="form-group"><label class="form-label">Monto</label><input class="form-input" id="movMonto" type="number"></div>
+  </div>
+  <div class="form-group"><label class="form-label">Fecha</label><input class="form-input" id="movFecha" type="date"></div>
+  <div class="form-group"><label class="form-label">Nota (opcional)</label><input class="form-input" id="movNota"></div>
+  <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('mMovAhorro')">Cancelar</button><button class="btn btn-primary" onclick="saveMovAhorro()">Guardar</button></div>
+</div></div>
+
+<div class="modal-overlay" id="mInversion"><div class="modal">
+  <div class="modal-handle"></div>
+  <div class="modal-title">Registrar compra de inversión</div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Tipo de activo</label><select class="form-select" id="invTipo"><option value="oro">Oro</option><option value="plata">Plata</option><option value="otro">Otro</option></select></div>
+    <div class="form-group"><label class="form-label">Unidad</label><select class="form-select" id="invUnidad"><option value="g">Gramos</option><option value="oz">Onzas</option><option value="unidad">Unidad</option></select></div>
+  </div>
+  <div class="form-group"><label class="form-label">Descripción</label><input class="form-input" id="invDescripcion" placeholder="Ej: Lingote 2.5g Barrick Gold"></div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Cantidad</label><input class="form-input" id="invCantidad" type="number" step="0.0001"></div>
+    <div class="form-group"><label class="form-label">Precio pagado por unidad</label><input class="form-input" id="invPrecioUnitario" type="number"></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Responsable</label><select class="form-select" id="invResponsable"></select></div>
+    <div class="form-group"><label class="form-label">Fecha de compra</label><input class="form-input" id="invFecha" type="date"></div>
+  </div>
+  <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('mInversion')">Cancelar</button><button class="btn btn-primary" onclick="saveInversion()">Guardar</button></div>
+</div></div>
+
 <div id="notifCont"></div>
 
 <script src="/app.js"></script>
 </body>
 </html>
+
