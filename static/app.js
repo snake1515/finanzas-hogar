@@ -52,6 +52,29 @@ async function apiForm(path, formData) {
 const cop = (n) => "$" + Math.round(n || 0).toLocaleString("es-CO");
 const uid = () => Math.random().toString(36).slice(2, 10);
 const catInfo = (id) => CATEGORIAS.find(c => c.id === id) || CATEGORIAS[CATEGORIAS.length - 1];
+
+/* ── Máscara de moneda para inputs (separador de miles + signo $) ── */
+function formatMoneyLive(el) {
+  const digitsBeforeCursor = el.value.slice(0, el.selectionStart).replace(/\D/g, "").length;
+  let digits = el.value.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+  el.value = digits ? "$ " + Number(digits).toLocaleString("es-CO") : "";
+  // Reubica el cursor contando dígitos desde el inicio (evita que salte al final)
+  let pos = 0, seen = 0;
+  while (pos < el.value.length && seen < digitsBeforeCursor) {
+    if (/\d/.test(el.value[pos])) seen++;
+    pos++;
+  }
+  el.setSelectionRange(pos, pos);
+}
+function moneyValue(el) { return el ? parseFloat((el.value || "").replace(/\D/g, "")) || 0 : 0; }
+function setMoneyValue(el, num) {
+  if (!el) return;
+  el.value = num ? "$ " + Math.round(num).toLocaleString("es-CO") : "";
+}
+document.addEventListener("input", (e) => {
+  if (e.target.classList && e.target.classList.contains("money-input")) formatMoneyLive(e.target);
+});
+
 function notify(msg, type = "info") {
   const cont = document.getElementById("notifCont");
   const el = document.createElement("div");
@@ -157,7 +180,7 @@ function initMonthSelectors() {
    ══════════════════════════════════════ */
 const TITULOS = { dashboard:"Dashboard", gastos:"Gastos", ingresos:"Ingresos", prestamos:"Préstamos",
   tarjetas:"Tarjetas", alertas:"Alertas", usuarios:"Usuarios", porra:"Porra / San", perfil:"Mi perfil",
-  ahorro:"Ahorro", inversion:"Inversión", nomina:"Nómina" };
+  ahorro:"Ahorro", inversion:"Inversión", nomina:"Nómina", reportes:"Reportes" };
 
 function goPage(page) {
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
@@ -174,6 +197,7 @@ function goPage(page) {
   if (page === "ahorro") renderAhorros();
   if (page === "inversion") renderInversiones();
   if (page === "nomina") renderNomina();
+  if (page === "reportes") renderReportes();
 }
 function toggleMasMenu() {
   const m = document.getElementById("masMenu"), o = document.getElementById("masOverlay");
@@ -291,7 +315,7 @@ function openModalGasto(id) {
   document.getElementById("mGastoTitle").textContent = g ? "Editar gasto" : "Nuevo gasto";
   document.getElementById("gEditId").value = id || "";
   document.getElementById("gDesc").value = g?.descripcion || "";
-  document.getElementById("gMonto").value = g?.monto || "";
+  setMoneyValue(document.getElementById("gMonto"), g?.monto);
   document.getElementById("gCat").value = g?.categoria || CATEGORIAS[0].id;
   document.getElementById("gResp").value = g?.responsable_id || STATE.user.id;
   document.getElementById("gFecha").value = g?.fecha || new Date().toISOString().slice(0, 10);
@@ -305,7 +329,7 @@ async function saveGasto() {
   const id = document.getElementById("gEditId").value;
   const payload = {
     descripcion: document.getElementById("gDesc").value,
-    monto: parseFloat(document.getElementById("gMonto").value || 0),
+    monto: moneyValue(document.getElementById("gMonto")),
     categoria: document.getElementById("gCat").value,
     responsable_id: document.getElementById("gResp").value,
     fecha: document.getElementById("gFecha").value,
@@ -352,7 +376,7 @@ function renderIngresos() {
 }
 function openModalIngreso() {
   document.getElementById("iPersona").innerHTML = STATE.usuarios.map(u => `<option value="${u.id}">${u.nombre}</option>`).join("");
-  document.getElementById("iMonto").value = "";
+  setMoneyValue(document.getElementById("iMonto"), 0);
   document.getElementById("iFuente").value = "";
   document.getElementById("iFecha").value = new Date().toISOString().slice(0, 10);
   openModal("mIngreso");
@@ -360,7 +384,7 @@ function openModalIngreso() {
 async function saveIngreso() {
   const payload = {
     persona_id: document.getElementById("iPersona").value,
-    monto: parseFloat(document.getElementById("iMonto").value || 0),
+    monto: moneyValue(document.getElementById("iMonto")),
     fuente: document.getElementById("iFuente").value,
     fecha: document.getElementById("iFecha").value,
   };
@@ -408,8 +432,8 @@ function openModalPrestamo(id) {
   const p = id ? STATE.prestamos.find(x => x.id === id) : null;
   document.getElementById("pEditId").value = id || "";
   document.getElementById("pNombre").value = p?.nombre || "";
-  document.getElementById("pMonto").value = p?.monto || "";
-  document.getElementById("pCuota").value = p?.cuota || "";
+  setMoneyValue(document.getElementById("pMonto"), p?.monto);
+  setMoneyValue(document.getElementById("pCuota"), p?.cuota);
   document.getElementById("pCuotas").value = p?.cuotas || "";
   document.getElementById("pPagadas").value = p?.pagadas || 0;
   document.getElementById("pResp").value = p?.responsable_id || STATE.user.id;
@@ -421,8 +445,8 @@ async function savePrestamo() {
   const id = document.getElementById("pEditId").value;
   const payload = {
     nombre: document.getElementById("pNombre").value,
-    monto: parseFloat(document.getElementById("pMonto").value || 0),
-    cuota: parseFloat(document.getElementById("pCuota").value || 0),
+    monto: moneyValue(document.getElementById("pMonto")),
+    cuota: moneyValue(document.getElementById("pCuota")),
     cuotas: parseInt(document.getElementById("pCuotas").value || 1),
     pagadas: parseInt(document.getElementById("pPagadas").value || 0),
     responsable_id: document.getElementById("pResp").value,
@@ -679,14 +703,14 @@ async function agregarCargoFijo() {
   const periodo = `${STATE.ano}-${String(STATE.mes+1).padStart(2,"0")}`;
   const payload = {
     descripcion: document.getElementById("cfDesc").value,
-    monto: parseFloat(document.getElementById("cfMonto").value || 0),
+    monto: moneyValue(document.getElementById("cfMonto")),
     tipo_reparto: document.getElementById("cfTipo").value,
     periodo,
   };
   if (!payload.descripcion || !payload.monto) return notify("Completa descripción y monto", "error");
   await api("/cargos-fijos", { method: "POST", body: JSON.stringify(payload) });
   document.getElementById("cfDesc").value = "";
-  document.getElementById("cfMonto").value = "";
+  setMoneyValue(document.getElementById("cfMonto"), 0);
   cargarCargosFijos();
 }
 async function eliminarCargoFijo(id) {
@@ -740,7 +764,7 @@ function openModalPorra() {
       <input type="checkbox" value="${u.id}" class="porra-part-check"> ${u.nombre}
     </label>`).join("");
   document.getElementById("pNombrePorra").value = "";
-  document.getElementById("pCuotaPorra").value = "";
+  setMoneyValue(document.getElementById("pCuotaPorra"), 0);
   document.getElementById("pFechaInicio").value = new Date().toISOString().slice(0, 10);
   document.getElementById("pDescripcion").value = "";
   openModal("mPorra");
@@ -749,7 +773,7 @@ async function savePorra() {
   const participantes = [...document.querySelectorAll(".porra-part-check:checked")].map(c => ({ usuario_id: c.value }));
   const payload = {
     nombre: document.getElementById("pNombrePorra").value,
-    cuota: parseFloat(document.getElementById("pCuotaPorra").value || 0),
+    cuota: moneyValue(document.getElementById("pCuotaPorra")),
     frecuencia: document.getElementById("pFrecuencia").value,
     fecha_inicio: document.getElementById("pFechaInicio").value,
     modalidad: document.getElementById("pModalidad").value,
@@ -820,14 +844,14 @@ async function renderAhorros() {
 }
 function openModalAhorro() {
   document.getElementById("ahNombre").value = "";
-  document.getElementById("ahMontoObjetivo").value = "";
+  setMoneyValue(document.getElementById("ahMontoObjetivo"), 0);
   document.getElementById("ahFechaLimite").value = "";
   openModal("mAhorro");
 }
 async function saveAhorro() {
   const payload = {
     nombre: document.getElementById("ahNombre").value,
-    monto_objetivo: parseFloat(document.getElementById("ahMontoObjetivo").value) || null,
+    monto_objetivo: moneyValue(document.getElementById("ahMontoObjetivo")) || null,
     fecha_limite: document.getElementById("ahFechaLimite").value || null,
   };
   if (!payload.nombre) return notify("Ponle un nombre a la alcancía", "error");
@@ -845,7 +869,7 @@ function openModalMovAhorro(ahorroId, tipo) {
   document.getElementById("movAhorroId").value = ahorroId;
   document.getElementById("movTipo").value = tipo;
   document.getElementById("mMovAhorroTitle").textContent = tipo === "deposito" ? "Registrar depósito" : "Registrar retiro";
-  document.getElementById("movMonto").value = "";
+  setMoneyValue(document.getElementById("movMonto"), 0);
   document.getElementById("movFecha").value = new Date().toISOString().slice(0, 10);
   document.getElementById("movNota").value = "";
   openModal("mMovAhorro");
@@ -854,7 +878,7 @@ async function saveMovAhorro() {
   const ahorroId = document.getElementById("movAhorroId").value;
   const payload = {
     tipo: document.getElementById("movTipo").value,
-    monto: parseFloat(document.getElementById("movMonto").value || 0),
+    monto: moneyValue(document.getElementById("movMonto")),
     fecha: document.getElementById("movFecha").value,
     nota: document.getElementById("movNota").value,
   };
@@ -901,7 +925,7 @@ function openModalInversion() {
   document.getElementById("invResponsable").innerHTML = STATE.usuarios.map(u => `<option value="${u.id}">${u.nombre}</option>`).join("");
   document.getElementById("invDescripcion").value = "";
   document.getElementById("invCantidad").value = "";
-  document.getElementById("invPrecioUnitario").value = "";
+  setMoneyValue(document.getElementById("invPrecioUnitario"), 0);
   document.getElementById("invFecha").value = new Date().toISOString().slice(0, 10);
   document.getElementById("invResponsable").value = STATE.user.id;
   openModal("mInversion");
@@ -912,7 +936,7 @@ async function saveInversion() {
     unidad: document.getElementById("invUnidad").value,
     descripcion: document.getElementById("invDescripcion").value,
     cantidad: parseFloat(document.getElementById("invCantidad").value || 0),
-    precio_compra_unitario: parseFloat(document.getElementById("invPrecioUnitario").value || 0),
+    precio_compra_unitario: moneyValue(document.getElementById("invPrecioUnitario")),
     responsable_id: document.getElementById("invResponsable").value,
     fecha_compra: document.getElementById("invFecha").value,
   };
@@ -937,15 +961,70 @@ STATE.nomina = { ingresos: [], descuentos: [] };
 function nomFmt(n) { return "$" + Math.round(n || 0).toLocaleString("es-CO"); }
 
 function agregarIngresoNomina() {
+  leerFilasNomina();
   STATE.nomina.ingresos.push({ id: uid(), desc: "", monto: 0, afectaIBC: false });
-  renderNomina();
+  renderFilasNomina();
+  actualizarNomina();
 }
 function agregarDescuentoNomina() {
+  leerFilasNomina();
   STATE.nomina.descuentos.push({ id: uid(), desc: "", monto: 0 });
-  renderNomina();
+  renderFilasNomina();
+  actualizarNomina();
 }
-function quitarIngresoNomina(id) { STATE.nomina.ingresos = STATE.nomina.ingresos.filter(x => x.id !== id); renderNomina(); }
-function quitarDescuentoNomina(id) { STATE.nomina.descuentos = STATE.nomina.descuentos.filter(x => x.id !== id); renderNomina(); }
+function quitarIngresoNomina(id) {
+  leerFilasNomina();
+  STATE.nomina.ingresos = STATE.nomina.ingresos.filter(x => x.id !== id);
+  renderFilasNomina();
+  actualizarNomina();
+}
+function quitarDescuentoNomina(id) {
+  leerFilasNomina();
+  STATE.nomina.descuentos = STATE.nomina.descuentos.filter(x => x.id !== id);
+  renderFilasNomina();
+  actualizarNomina();
+}
+
+// Lee lo que hay actualmente en los inputs de las filas y lo guarda en STATE
+// (se usa antes de reconstruir el HTML de las filas, para no perder lo ya escrito)
+function leerFilasNomina() {
+  document.querySelectorAll("#nomIngresosList .nom-row").forEach(rowEl => {
+    const item = STATE.nomina.ingresos.find(x => x.id === rowEl.dataset.id);
+    if (!item) return;
+    item.desc = rowEl.querySelector(".nom-desc").value;
+    item.monto = moneyValue(rowEl.querySelector(".nom-monto"));
+    item.afectaIBC = rowEl.querySelector(".nom-ibc").checked;
+  });
+  document.querySelectorAll("#nomDescuentosList .nom-row").forEach(rowEl => {
+    const item = STATE.nomina.descuentos.find(x => x.id === rowEl.dataset.id);
+    if (!item) return;
+    item.desc = rowEl.querySelector(".nom-desc").value;
+    item.monto = moneyValue(rowEl.querySelector(".nom-monto"));
+  });
+}
+
+// Construye el HTML de las filas — SOLO se llama al agregar/quitar/entrar a la página,
+// nunca en cada tecla (si no, se pierde el foco del input mientras se escribe).
+function renderFilasNomina() {
+  const ingCont = document.getElementById("nomIngresosList");
+  document.getElementById("nomIngresosEmpty").style.display = STATE.nomina.ingresos.length ? "none" : "";
+  ingCont.innerHTML = STATE.nomina.ingresos.map(row => `
+    <div class="nom-row" data-id="${row.id}">
+      <input type="text" class="form-input nom-desc" placeholder="Ej: Comisión" value="${row.desc}" oninput="actualizarNomina()">
+      <input type="text" inputmode="numeric" class="form-input money-input nom-monto" placeholder="$ 0" value="${row.monto ? '$ ' + row.monto.toLocaleString('es-CO') : ''}" oninput="actualizarNomina()">
+      <label class="nom-check"><input type="checkbox" class="nom-ibc" ${row.afectaIBC ? "checked" : ""} onchange="actualizarNomina()">Salud/pensión</label>
+      <button class="btn btn-danger btn-icon" onclick="quitarIngresoNomina('${row.id}')">✕</button>
+    </div>`).join("");
+
+  const descCont = document.getElementById("nomDescuentosList");
+  document.getElementById("nomDescuentosEmpty").style.display = STATE.nomina.descuentos.length ? "none" : "";
+  descCont.innerHTML = STATE.nomina.descuentos.map(row => `
+    <div class="nom-row" data-id="${row.id}">
+      <input type="text" class="form-input nom-desc" placeholder="Ej: Libranza" value="${row.desc}" oninput="actualizarNomina()">
+      <input type="text" inputmode="numeric" class="form-input money-input nom-monto" placeholder="$ 0" value="${row.monto ? '$ ' + row.monto.toLocaleString('es-CO') : ''}" oninput="actualizarNomina()">
+      <button class="btn btn-danger btn-icon" onclick="quitarDescuentoNomina('${row.id}')">✕</button>
+    </div>`).join("");
+}
 
 function calcularNomina(salarioBase, tieneAux, ingresos, descuentos) {
   const auxTransporte = tieneAux ? NOMINA_2026.auxTransporte : 0;
@@ -993,45 +1072,29 @@ function calcularNomina(salarioBase, tieneAux, ingresos, descuentos) {
     descuentosExtraTotal, totalDevengado, totalLey, totalDeducido, netoAPagar };
 }
 
+// Se llama cada vez que se abre la página de nómina (construye todo desde cero)
 function renderNomina() {
+  const auxCheck = document.getElementById("nomAuxTransporte");
+  if (!auxCheck.dataset.bound) {
+    auxCheck.addEventListener("change", () => { auxCheck.dataset.touched = "1"; actualizarNomina(); });
+    auxCheck.dataset.bound = "1";
+  }
+  renderFilasNomina();
+  actualizarNomina();
+}
+
+// Se llama en cada tecla — SOLO recalcula el resultado, nunca reconstruye los inputs
+// de las filas (eso es lo que causaba que se perdiera el foco al escribir).
+function actualizarNomina() {
+  leerFilasNomina();
   const salarioInput = document.getElementById("nomSalario");
-  const salarioBase = parseFloat(salarioInput.value) || 0;
+  const salarioBase = moneyValue(salarioInput);
   const auxCheck = document.getElementById("nomAuxTransporte");
 
   // Auto-marcar auxilio si el salario califica (≤ 2 SMLV) y el usuario no lo ha tocado a mano
   if (salarioBase > 0 && auxCheck.dataset.touched !== "1") {
     auxCheck.checked = salarioBase <= NOMINA_2026.smlv * 2;
   }
-  if (!auxCheck.dataset.bound) {
-    auxCheck.addEventListener("change", () => { auxCheck.dataset.touched = "1"; });
-    auxCheck.dataset.bound = "1";
-  }
-
-  // Filas de ingresos adicionales
-  const ingCont = document.getElementById("nomIngresosList");
-  document.getElementById("nomIngresosEmpty").style.display = STATE.nomina.ingresos.length ? "none" : "";
-  ingCont.innerHTML = STATE.nomina.ingresos.map(row => `
-    <div class="nom-row">
-      <input type="text" class="form-input" placeholder="Ej: Comisión" value="${row.desc}"
-        oninput="STATE.nomina.ingresos.find(x=>x.id==='${row.id}').desc=this.value">
-      <input type="number" class="form-input" inputmode="numeric" placeholder="0" value="${row.monto || ""}"
-        oninput="STATE.nomina.ingresos.find(x=>x.id==='${row.id}').monto=parseFloat(this.value)||0;renderNomina()">
-      <label class="nom-check"><input type="checkbox" ${row.afectaIBC ? "checked" : ""}
-        onchange="STATE.nomina.ingresos.find(x=>x.id==='${row.id}').afectaIBC=this.checked;renderNomina()">Salud/pensión</label>
-      <button class="btn btn-danger btn-icon" onclick="quitarIngresoNomina('${row.id}')">✕</button>
-    </div>`).join("");
-
-  // Filas de descuentos adicionales
-  const descCont = document.getElementById("nomDescuentosList");
-  document.getElementById("nomDescuentosEmpty").style.display = STATE.nomina.descuentos.length ? "none" : "";
-  descCont.innerHTML = STATE.nomina.descuentos.map(row => `
-    <div class="nom-row">
-      <input type="text" class="form-input" placeholder="Ej: Libranza" value="${row.desc}"
-        oninput="STATE.nomina.descuentos.find(x=>x.id==='${row.id}').desc=this.value">
-      <input type="number" class="form-input" inputmode="numeric" placeholder="0" value="${row.monto || ""}"
-        oninput="STATE.nomina.descuentos.find(x=>x.id==='${row.id}').monto=parseFloat(this.value)||0;renderNomina()">
-      <button class="btn btn-danger btn-icon" onclick="quitarDescuentoNomina('${row.id}')">✕</button>
-    </div>`).join("");
 
   const r = calcularNomina(salarioBase, auxCheck.checked, STATE.nomina.ingresos, STATE.nomina.descuentos);
   const cont = document.getElementById("nomResultado");
@@ -1063,7 +1126,7 @@ function renderNomina() {
 }
 
 async function descargarReciboNomina() {
-  const salarioBase = parseFloat(document.getElementById("nomSalario")?.value) || 0;
+  const salarioBase = moneyValue(document.getElementById("nomSalario"));
   if (!salarioBase) return notify("Ingresa el salario básico primero", "error");
   if (typeof html2canvas === "undefined") return notify("No se pudo cargar el generador de imágenes", "error");
   const el = document.getElementById("reciboNomina");
@@ -1094,6 +1157,115 @@ async function descargarReciboNomina() {
 }
 
 /* ══════════════════════════════════════
+   REPORTES — Imagen de ingresos y gastos del mes
+   ══════════════════════════════════════ */
+const MESES_NOMBRE = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+function agruparGastosPorCategoria(gastos) {
+  const map = {};
+  gastos.forEach(g => {
+    if (!map[g.categoria]) map[g.categoria] = { total: 0, count: 0 };
+    map[g.categoria].total += g.monto;
+    map[g.categoria].count++;
+  });
+  return Object.entries(map)
+    .map(([id, v]) => ({ ...catInfo(id), ...v }))
+    .sort((a, b) => b.total - a.total);
+}
+
+function renderReportes() {
+  document.getElementById("rptPeriodoLabel").textContent = `${MESES_NOMBRE[STATE.mes]} ${STATE.ano}`;
+  const cont = document.getElementById("rptPreview");
+
+  const gastos = [...STATE.gastos].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const ingresos = [...STATE.ingresos].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const totalGastos = gastos.reduce((s, g) => s + g.monto, 0);
+  const totalIngresos = ingresos.reduce((s, i) => s + i.monto, 0);
+  const balance = totalIngresos - totalGastos;
+  const porCategoria = agruparGastosPorCategoria(gastos);
+  const maxCat = porCategoria[0]?.total || 1;
+
+  if (!gastos.length && !ingresos.length) {
+    cont.innerHTML = `<div class="card"><div class="empty"><div class="icon">📊</div><p>No hay movimientos en ${MESES_NOMBRE[STATE.mes]} ${STATE.ano}</p></div></div>`;
+    return;
+  }
+
+  cont.innerHTML = `
+    <div class="rpt-card" id="reciboReportes">
+      <div class="rpt-header">
+        <div class="rpt-title">Reporte financiero</div>
+        <div class="rpt-sub">${MESES_NOMBRE[STATE.mes]} ${STATE.ano}</div>
+      </div>
+
+      <div class="rpt-stats">
+        <div class="rpt-stat"><div class="rpt-stat-label">Ingresos</div><div class="rpt-stat-val" style="color:#1a9e5c">${nomFmt(totalIngresos)}</div></div>
+        <div class="rpt-stat"><div class="rpt-stat-label">Gastos</div><div class="rpt-stat-val" style="color:#d9394c">${nomFmt(totalGastos)}</div></div>
+        <div class="rpt-stat"><div class="rpt-stat-label">Balance</div><div class="rpt-stat-val" style="color:${balance>=0?'#1a9e5c':'#d9394c'}">${nomFmt(balance)}</div></div>
+      </div>
+
+      <div class="rpt-section-title">Resumen de gastos por categoría</div>
+      ${porCategoria.map(c => `
+        <div class="rpt-cat-row">
+          <div class="rpt-cat-top">
+            <span>${c.icon} ${c.nombre} <span style="color:#aaa">(${c.count})</span></span>
+            <b>${nomFmt(c.total)}</b>
+          </div>
+          <div class="rpt-cat-bar-wrap"><div class="rpt-cat-bar" style="width:${(c.total/maxCat*100).toFixed(0)}%;background:${c.color}"></div></div>
+        </div>`).join("") || `<div style="font-size:12px;color:#999;padding:6px 0">Sin gastos este mes</div>`}
+
+      <div class="rpt-section-title">Detalle de ingresos (${ingresos.length})</div>
+      ${ingresos.map(i => {
+        const u = STATE.usuarios.find(x => x.id === i.persona_id);
+        return `<div class="rpt-row">
+          <div><div class="rl-main">${i.fuente || "Ingreso"}</div><div class="rl-sub">${u?.nombre || "—"} · ${i.fecha}</div></div>
+          <div class="rl-amt" style="color:#1a9e5c">+${nomFmt(i.monto)}</div>
+        </div>`;
+      }).join("") || `<div style="font-size:12px;color:#999;padding:6px 0">Sin ingresos este mes</div>`}
+
+      <div class="rpt-section-title">Detalle de gastos (${gastos.length})</div>
+      ${gastos.map(g => {
+        const info = catInfo(g.categoria);
+        const resp = STATE.usuarios.find(u => u.id === g.responsable_id);
+        return `<div class="rpt-row">
+          <div><div class="rl-main">${info.icon} ${g.descripcion}</div><div class="rl-sub">${resp?.nombre || "—"} · ${info.nombre} · ${g.fecha}${g.tipo==='cuota' ? ` · Cuota ${g.cuota_actual}/${g.cuota_total}` : ""}</div></div>
+          <div class="rl-amt" style="color:#d9394c">-${nomFmt(g.monto)}</div>
+        </div>`;
+      }).join("") || `<div style="font-size:12px;color:#999;padding:6px 0">Sin gastos este mes</div>`}
+
+      <div class="rpt-footer">Generado el ${new Date().toLocaleDateString("es-CO",{day:"numeric",month:"long",year:"numeric"})} · FinanzasHogar</div>
+    </div>`;
+}
+
+async function descargarReporteImg() {
+  const el = document.getElementById("reciboReportes");
+  if (!el) return notify("No hay datos para generar el reporte", "error");
+  if (typeof html2canvas === "undefined") return notify("No se pudo cargar el generador de imágenes", "error");
+  notify("Generando imagen…", "info");
+  try {
+    const canvas = await html2canvas(el, { backgroundColor: "#ffffff", scale: 2 });
+    canvas.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `reporte-${MESES_NOMBRE[STATE.mes].toLowerCase()}-${STATE.ano}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      if (navigator.share && navigator.canShare) {
+        const file = new File([blob], "reporte.png", { type: "image/png" });
+        if (navigator.canShare({ files: [file] })) {
+          navigator.share({ files: [file], title: "Reporte financiero" }).catch(() => {});
+        }
+      }
+      notify("Imagen lista", "success");
+    }, "image/png");
+  } catch (e) {
+    notify("No se pudo generar la imagen", "error");
+  }
+}
+
+/* ══════════════════════════════════════
    ARRANQUE
    ══════════════════════════════════════ */
 (async function start() {
@@ -1114,6 +1286,7 @@ async function descargarReciboNomina() {
     initLogin();
   }
 })();
+
 
 
 
