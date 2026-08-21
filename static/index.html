@@ -171,6 +171,27 @@ body{flex-direction:row;}
 .nom-line .nl-label{color:var(--text2);}
 .nom-line .nl-sub{font-size:10px;color:var(--text3);margin-top:1px;}
 .nom-line.total{font-size:15px;font-weight:700;padding-top:12px;border-top:1.5px solid var(--border2);border-bottom:none;margin-top:4px;}
+
+/* Reporte — estilo recibo/factura claro, con colores fijos (no usa variables del tema oscuro) */
+.rpt-card{background:#ffffff;color:#1a1a2e;border-radius:14px;padding:20px 18px;}
+.rpt-header{text-align:center;margin-bottom:16px;padding-bottom:14px;border-bottom:2px solid #1a1a2e;}
+.rpt-title{font-size:17px;font-weight:800;letter-spacing:.2px;}
+.rpt-sub{font-size:12px;color:#666;margin-top:3px;text-transform:capitalize;}
+.rpt-stats{display:flex;gap:8px;margin-bottom:18px;}
+.rpt-stat{flex:1;background:#f4f5f7;border-radius:10px;padding:10px 6px;text-align:center;}
+.rpt-stat-label{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:.4px;}
+.rpt-stat-val{font-size:13px;font-weight:700;margin-top:4px;}
+.rpt-section-title{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#444;margin:18px 0 8px;padding-bottom:5px;border-bottom:1px solid #e2e2e6;}
+.rpt-cat-row{padding:6px 0;font-size:12.5px;}
+.rpt-cat-top{display:flex;justify-content:space-between;align-items:center;}
+.rpt-cat-bar-wrap{background:#eee;border-radius:4px;height:5px;margin-top:4px;overflow:hidden;}
+.rpt-cat-bar{height:100%;border-radius:4px;}
+.rpt-row{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px dashed #e2e2e6;font-size:12px;}
+.rpt-row:last-child{border-bottom:none;}
+.rpt-row .rl-main{font-weight:600;color:#1a1a2e;}
+.rpt-row .rl-sub{font-size:10px;color:#999;margin-top:1px;}
+.rpt-row .rl-amt{font-weight:700;white-space:nowrap;flex-shrink:0;}
+.rpt-footer{text-align:center;font-size:9.5px;color:#aaa;margin-top:18px;padding-top:10px;border-top:1px solid #e2e2e6;}
 </style>
 </head>
 <body>
@@ -205,6 +226,7 @@ body{flex-direction:row;}
         <div class="snav-item" onclick="goPage('ahorro')" data-page="ahorro"><span>Ahorro</span></div>
         <div class="snav-item" onclick="goPage('inversion')" data-page="inversion"><span>Inversión</span></div>
         <div class="snav-item" onclick="goPage('nomina')" data-page="nomina"><span>Nómina</span></div>
+        <div class="snav-item" onclick="goPage('reportes')" data-page="reportes"><span>Reportes</span></div>
         <div class="snav-item" onclick="goPage('alertas')" data-page="alertas"><span>Alertas</span></div>
       </div>
       <div class="snav-section" id="adminNavDesk">
@@ -319,7 +341,7 @@ body{flex-direction:row;}
             <div class="card-header"><div class="card-title">Agregar cargo fijo</div></div>
             <div class="form-row" style="margin-bottom:10px">
               <div class="form-group" style="margin-bottom:0"><label class="form-label">Descripción</label><input class="form-input" id="cfDesc" placeholder="Ej: Cuota de manejo"></div>
-              <div class="form-group" style="margin-bottom:0"><label class="form-label">Monto (COP)</label><input class="form-input" id="cfMonto" type="number" inputmode="numeric" placeholder="0"></div>
+              <div class="form-group" style="margin-bottom:0"><label class="form-label">Monto (COP)</label><input class="form-input money-input" id="cfMonto" type="text" inputmode="numeric" placeholder="$ 0"></div>
             </div>
             <div class="form-group">
               <label class="form-label">Tipo de reparto</label>
@@ -375,7 +397,7 @@ body{flex-direction:row;}
 
         <div class="card" style="margin-bottom:12px">
           <div class="card-header"><div class="card-title">Tu salario</div></div>
-          <div class="form-group"><label class="form-label">Salario básico mensual (COP)</label><input class="form-input" id="nomSalario" type="number" inputmode="numeric" placeholder="3000000" oninput="renderNomina()"></div>
+          <div class="form-group"><label class="form-label">Salario básico mensual (COP)</label><input class="form-input money-input" id="nomSalario" type="text" inputmode="numeric" placeholder="$ 3.000.000" oninput="actualizarNomina()"></div>
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2)">
             <input type="checkbox" id="nomAuxTransporte" onchange="renderNomina()" style="width:16px;height:16px">
             Tiene derecho a auxilio de transporte (aplica si el salario es ≤ 2 SMLV)
@@ -397,6 +419,16 @@ body{flex-direction:row;}
         <div class="card" id="nomResultado" style="margin-bottom:12px"></div>
 
         <button class="btn btn-primary" style="width:100%" onclick="descargarReciboNomina()">📷 Generar imagen para compartir</button>
+      </div>
+
+      <div class="page" id="page-reportes">
+        <div class="sec-header"><div class="sec-title">📊 Reportes — Ingresos y gastos</div></div>
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-header"><div><div class="card-title">Período del reporte</div><div class="card-sub" id="rptPeriodoLabel">—</div></div></div>
+          <p style="font-size:12px;color:var(--text3)">Usa el mismo mes/año seleccionado arriba en la barra superior. Cambia el selector de mes y vuelve a esta pestaña para actualizar el reporte.</p>
+        </div>
+        <div id="rptPreview"></div>
+        <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="descargarReporteImg()">📷 Generar imagen para compartir</button>
       </div>
 
       <div class="page" id="page-perfil">
@@ -431,6 +463,7 @@ body{flex-direction:row;}
       <div onclick="goPage('ahorro');closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px">Ahorro</div>
       <div onclick="goPage('inversion');closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px">Inversión</div>
       <div onclick="goPage('nomina');closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px">Nómina</div>
+      <div onclick="goPage('reportes');closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px">Reportes</div>
       <div onclick="goPage('tarjetas');closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px">Tarjetas</div>
       <div onclick="goPage('alertas');closeMasMenu()" style="padding:10px 12px;cursor:pointer;font-size:13px">Alertas</div>
       <div onclick="goPage('usuarios');closeMasMenu()" id="masUsuariosItem" style="padding:10px 12px;cursor:pointer;font-size:13px">Usuarios</div>
@@ -449,7 +482,7 @@ body{flex-direction:row;}
   <div class="modal-title" id="mGastoTitle">Nuevo gasto</div>
   <div class="form-group"><label class="form-label">Descripción</label><input class="form-input" id="gDesc"></div>
   <div class="form-row">
-    <div class="form-group"><label class="form-label">Monto (COP)</label><input class="form-input" id="gMonto" type="number" inputmode="numeric"></div>
+    <div class="form-group"><label class="form-label">Monto (COP)</label><input class="form-input money-input" id="gMonto" type="text" inputmode="numeric" placeholder="$ 0"></div>
     <div class="form-group"><label class="form-label">Categoría</label><select class="form-select" id="gCat"></select></div>
   </div>
   <div class="form-row">
@@ -474,7 +507,7 @@ body{flex-direction:row;}
   <div class="modal-title">Registrar ingreso</div>
   <div class="form-row">
     <div class="form-group"><label class="form-label">Persona</label><select class="form-select" id="iPersona"></select></div>
-    <div class="form-group"><label class="form-label">Monto (COP)</label><input class="form-input" id="iMonto" type="number"></div>
+    <div class="form-group"><label class="form-label">Monto (COP)</label><input class="form-input money-input" id="iMonto" type="text" inputmode="numeric" placeholder="$ 0"></div>
   </div>
   <div class="form-row">
     <div class="form-group"><label class="form-label">Fuente</label><input class="form-input" id="iFuente"></div>
@@ -488,8 +521,8 @@ body{flex-direction:row;}
   <div class="modal-title">Nuevo préstamo / deuda</div>
   <div class="form-group"><label class="form-label">Nombre</label><input class="form-input" id="pNombre"></div>
   <div class="form-row">
-    <div class="form-group"><label class="form-label">Monto total</label><input class="form-input" id="pMonto" type="number"></div>
-    <div class="form-group"><label class="form-label">Cuota mensual</label><input class="form-input" id="pCuota" type="number"></div>
+    <div class="form-group"><label class="form-label">Monto total</label><input class="form-input money-input" id="pMonto" type="text" inputmode="numeric" placeholder="$ 0"></div>
+    <div class="form-group"><label class="form-label">Cuota mensual</label><input class="form-input money-input" id="pCuota" type="text" inputmode="numeric" placeholder="$ 0"></div>
   </div>
   <div class="form-row">
     <div class="form-group"><label class="form-label">Cuotas totales</label><input class="form-input" id="pCuotas" type="number" min="1"></div>
@@ -525,7 +558,7 @@ body{flex-direction:row;}
   <div class="modal-title">Nueva Porra / San</div>
   <div class="form-group"><label class="form-label">Nombre del grupo</label><input class="form-input" id="pNombrePorra"></div>
   <div class="form-row">
-    <div class="form-group"><label class="form-label">Cuota por período</label><input class="form-input" id="pCuotaPorra" type="number"></div>
+    <div class="form-group"><label class="form-label">Cuota por período</label><input class="form-input money-input" id="pCuotaPorra" type="text" inputmode="numeric" placeholder="$ 0"></div>
     <div class="form-group"><label class="form-label">Frecuencia</label><select class="form-select" id="pFrecuencia"><option value="semanal">Semanal</option><option value="quincenal">Quincenal</option><option value="mensual" selected>Mensual</option></select></div>
   </div>
   <div class="form-row">
@@ -546,7 +579,7 @@ body{flex-direction:row;}
   <div class="modal-title">Nueva alcancía</div>
   <div class="form-group"><label class="form-label">Nombre</label><input class="form-input" id="ahNombre" placeholder="Ej: Vacaciones, Fondo de emergencia"></div>
   <div class="form-row">
-    <div class="form-group"><label class="form-label">Monto objetivo (opcional)</label><input class="form-input" id="ahMontoObjetivo" type="number"></div>
+    <div class="form-group"><label class="form-label">Monto objetivo (opcional)</label><input class="form-input money-input" id="ahMontoObjetivo" type="text" inputmode="numeric" placeholder="$ 0"></div>
     <div class="form-group"><label class="form-label">Fecha límite (opcional)</label><input class="form-input" id="ahFechaLimite" type="date"></div>
   </div>
   <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('mAhorro')">Cancelar</button><button class="btn btn-primary" onclick="saveAhorro()">Crear alcancía</button></div>
@@ -558,7 +591,7 @@ body{flex-direction:row;}
   <input type="hidden" id="movAhorroId">
   <div class="form-row">
     <div class="form-group"><label class="form-label">Tipo</label><select class="form-select" id="movTipo"><option value="deposito">Depósito</option><option value="retiro">Retiro</option></select></div>
-    <div class="form-group"><label class="form-label">Monto</label><input class="form-input" id="movMonto" type="number"></div>
+    <div class="form-group"><label class="form-label">Monto</label><input class="form-input money-input" id="movMonto" type="text" inputmode="numeric" placeholder="$ 0"></div>
   </div>
   <div class="form-group"><label class="form-label">Fecha</label><input class="form-input" id="movFecha" type="date"></div>
   <div class="form-group"><label class="form-label">Nota (opcional)</label><input class="form-input" id="movNota"></div>
@@ -575,7 +608,7 @@ body{flex-direction:row;}
   <div class="form-group"><label class="form-label">Descripción</label><input class="form-input" id="invDescripcion" placeholder="Ej: Lingote 2.5g Barrick Gold"></div>
   <div class="form-row">
     <div class="form-group"><label class="form-label">Cantidad</label><input class="form-input" id="invCantidad" type="number" step="0.0001"></div>
-    <div class="form-group"><label class="form-label">Precio pagado por unidad</label><input class="form-input" id="invPrecioUnitario" type="number"></div>
+    <div class="form-group"><label class="form-label">Precio pagado por unidad</label><input class="form-input money-input" id="invPrecioUnitario" type="text" inputmode="numeric" placeholder="$ 0"></div>
   </div>
   <div class="form-row">
     <div class="form-group"><label class="form-label">Responsable</label><select class="form-select" id="invResponsable"></select></div>
@@ -590,6 +623,8 @@ body{flex-direction:row;}
 <script src="/app.js"></script>
 </body>
 </html>
+
+
 
 
 
