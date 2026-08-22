@@ -81,6 +81,8 @@ body{flex-direction:row;}
 .card-sub{font-size:11px;color:var(--text3);margin-top:2px;}
 .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
 .stat-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r2);padding:14px;}
+.stat-card-market{background:linear-gradient(135deg,rgba(167,139,250,0.10),rgba(255,201,64,0.06));border:1px solid rgba(167,139,250,0.25);border-radius:var(--r2);padding:14px;}
+.market-tag{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--purple);background:var(--purplebg);padding:2px 6px;border-radius:4px;margin-bottom:6px;}
 .stat-label{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px;}
 .stat-value{font-size:20px;font-weight:700;letter-spacing:-.5px;font-variant-numeric:tabular-nums;}
 .stat-note{font-size:11px;color:var(--text3);margin-top:3px;}
@@ -498,6 +500,14 @@ body{flex-direction:row;}
     <div class="form-group"><label class="form-label">Cuota N°</label><input class="form-input" id="gCuotaA" type="number" min="1"></div>
     <div class="form-group"><label class="form-label">De un total de</label><input class="form-input" id="gCuotaT" type="number" min="1"></div>
   </div>
+  <div class="form-group">
+    <label class="form-label">Foto del comprobante (opcional)</label>
+    <input type="file" id="gFoto" accept="image/*" capture="environment" style="display:none" onchange="previewFotoGasto(this)">
+    <div id="gFotoPreviewWrap" style="display:none;margin-bottom:8px">
+      <img id="gFotoPreview" style="max-width:100%;max-height:180px;border-radius:var(--r3);border:1px solid var(--border2)">
+    </div>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('gFoto').click()">📷 Tomar / elegir foto</button>
+  </div>
   <input type="hidden" id="gEditId">
   <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('mGasto')">Cancelar</button><button class="btn btn-primary" onclick="saveGasto()">Guardar</button></div>
 </div></div>
@@ -617,12 +627,39 @@ body{flex-direction:row;}
   <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('mInversion')">Cancelar</button><button class="btn btn-primary" onclick="saveInversion()">Guardar</button></div>
 </div></div>
 
+<div class="modal-overlay" id="mEditMov"><div class="modal">
+  <div class="modal-handle"></div>
+  <div class="modal-title">Editar movimiento de tarjeta</div>
+  <div class="form-group"><label class="form-label">Descripción</label><input class="form-input" id="emDesc"></div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Cuota de este mes</label><input class="form-input money-input" id="emMonto" type="text" inputmode="numeric"></div>
+    <div class="form-group"><label class="form-label">Valor total de la compra</label><input class="form-input money-input" id="emValorTotal" type="text" inputmode="numeric"></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Responsable</label><select class="form-select" id="emResp"></select></div>
+    <div class="form-group"><label class="form-label">Fecha</label><input class="form-input" id="emFecha" type="date"></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group"><label class="form-label">Cuota N°</label><input class="form-input" id="emCuotaA" type="number" min="1"></div>
+    <div class="form-group"><label class="form-label">De un total de</label><input class="form-input" id="emCuotaT" type="number" min="1"></div>
+  </div>
+  <input type="hidden" id="emId">
+  <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('mEditMov')">Cancelar</button><button class="btn btn-primary" onclick="saveEditMov()">Guardar cambios</button></div>
+</div></div>
+
 <div id="notifCont"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>
+
+
+
+
+
+
+
 
 
 
