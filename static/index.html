@@ -308,6 +308,7 @@ body{flex-direction:row;}
           <div class="tab" onclick="switchTabT('asignar',this)">2· Asignar</div>
           <div class="tab" onclick="switchTabT('cargos',this)">3· Cargos fijos</div>
           <div class="tab" onclick="switchTabT('resumen',this)">4· Resumen</div>
+          <div class="tab" onclick="switchTabT('extractos',this)">5· Extractos</div>
         </div>
         <div id="tCargar">
           <div class="drop-zone" onclick="document.getElementById('pdfFile').click()"
@@ -358,6 +359,13 @@ body{flex-direction:row;}
           <div class="card"><div class="card-header"><div class="card-title">Cargos registrados</div></div><div id="cargosFijosItems"></div></div>
         </div>
         <div id="tResumen" style="display:none"><div id="csvResumen"></div></div>
+        <div id="tExtractos" style="display:none">
+          <div class="card">
+            <div class="card-header"><div class="card-title">Extractos guardados este período</div></div>
+            <div class="list-sub" style="margin-bottom:8px">Cada PDF que subes en la pestaña "Cargar" queda guardado aquí para consultarlo después.</div>
+            <div id="extractosList"></div>
+          </div>
+        </div>
       </div>
 
       <div class="page" id="page-alertas">
@@ -654,6 +662,59 @@ body{flex-direction:row;}
 <script src="/app.js"></script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
