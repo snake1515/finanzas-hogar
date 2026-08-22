@@ -2,7 +2,7 @@ import re
 from flask import Blueprint, request, jsonify
 import pdfplumber
 from supabase_client import supabase
-from decorators import login_required
+from decorators import login_required, admin_required
 
 tarjetas_bp = Blueprint("tarjetas", __name__)
 
@@ -19,23 +19,13 @@ def procesar_pdf():
         with pdfplumber.open(archivo, password=password or None) as pdf:
             texto_completo = "\n".join(page.extract_text() or "" for page in pdf.pages)
     except Exception as e:
-        # pdfplumber lanza error si la contraseña es incorrecta o falta
         return jsonify({"error": "PDF protegido o contraseña incorrecta", "detalle": str(e)}), 422
 
     movimientos = extraer_movimientos_rappicard(texto_completo)
     return jsonify({"movimientos": movimientos})
 
 
-# ── Parser del extracto RappiCard/Davivienda ──
-# Verificado contra un extracto real. La tabla "Detalle de transacciones" tiene
-# columnas: Tarjeta | Fecha | Descripción | Valor transacción | Capital facturado
-# del periodo | Cuotas | Capital pendiente por facturar | Tasa M.V | Tasa E.A
-#
-# Caso especial: cuando la Descripción ocupa dos líneas (ej. "AJUSTE COMPRA PAGO
-# MIN ALTERNO"), pdfplumber extrae la 1ra línea de la descripción ANTES de la
-# fila con los números, y la 2da línea DESPUÉS — por eso se revisan las líneas
-# vecinas cuando la fila no trae descripción en su propia línea.
-
+# ── Parser del extracto RappiCard/Davivienda ── (sin cambios, ya validado)
 PATRON_FILA = re.compile(
     r"^(Fisica|Virtual|-)\s+(\d{4}-\d{2}-\d{2})\s*(.*?)\s*"
     r"\$(-?[\d.,]+)\s+"
@@ -64,7 +54,6 @@ def extraer_movimientos_rappicard(texto: str):
         tarjeta, fecha, desc, valor, cap_fact, cuotas, cap_pend, tasa_mv, tasa_ea = m.groups()
         desc = desc.strip()
 
-        # Descripción partida en dos líneas: buscar antes/después de esta fila
         if not desc:
             partes = []
             anterior = lineas[i - 1].strip() if i > 0 else ""
@@ -82,23 +71,22 @@ def extraer_movimientos_rappicard(texto: str):
 
         valor_transaccion = _parse_money(valor)
         capital_facturado = _parse_money(cap_fact)
+        capital_pendiente = _parse_money(cap_pend)
 
-        # "monto" = lo que realmente se factura ESTE período. Para compras a
-        # cuotas es el capital facturado del periodo (una fracción del valor
-        # total). Para pagos/abonos/ajustes (sin cuotas, cap_fact = N/A) se usa
-        # el valor de la transacción tal cual (suele venir negativo).
+        # "monto" = lo que se factura ESTE período (cuota). "valor_total" = el
+        # valor completo de la compra original, para que no se pierda ese dato.
         monto = capital_facturado if capital_facturado is not None else valor_transaccion
 
         movimientos.append({
             "fecha": fecha,
             "descripcion": desc,
-            "tarjeta": tarjeta,               # Fisica / Virtual / - (pago o ajuste)
+            "tarjeta": tarjeta,
             "monto": monto,
-            "valor_transaccion": valor_transaccion,
+            "valor_total": valor_transaccion,
             "cuota_actual": cuota_actual,
             "cuota_total": cuota_total,
-            "capital_pendiente": _parse_money(cap_pend),
-            "es_pago_o_ajuste": cuotas == "N/A",   # útil para que el frontend no lo sume como gasto
+            "capital_pendiente": capital_pendiente,
+            "es_pago_o_ajuste": cuotas == "N/A",
         })
 
     return movimientos
@@ -118,10 +106,33 @@ def listar_movimientos():
 @tarjetas_bp.route("/movimientos", methods=["POST"])
 @login_required
 def guardar_movimientos():
-    """Guarda en lote los movimientos ya asignados a un responsable desde el frontend."""
+    """Guarda en lote los movimientos ya asignados (y opcionalmente divididos
+    entre varias personas) desde el frontend."""
     filas = request.get_json()["movimientos"]
-    # csv_tx solo tiene estas columnas — se descartan los campos auxiliares del parser
-    permitido = {"descripcion", "monto", "fecha", "responsable_id", "cuota_actual", "cuota_total", "periodo"}
+    permitido = {"descripcion", "monto", "valor_total", "capital_pendiente",
+                 "fecha", "responsable_id", "cuota_actual", "cuota_total", "periodo"}
     filas_limpias = [{k: v for k, v in f.items() if k in permitido} for f in filas]
     res = supabase.table("csv_tx").insert(filas_limpias).execute()
     return jsonify(res.data), 201
+
+
+@tarjetas_bp.route("/movimientos/<mov_id>", methods=["PUT"])
+@login_required
+@admin_required
+def editar_movimiento(mov_id):
+    data = request.get_json()
+    permitido = {"descripcion", "monto", "valor_total", "capital_pendiente",
+                 "fecha", "responsable_id", "cuota_actual", "cuota_total"}
+    cambios = {k: v for k, v in data.items() if k in permitido}
+    res = supabase.table("csv_tx").update(cambios).eq("id", mov_id).execute()
+    return jsonify(res.data[0])
+
+
+@tarjetas_bp.route("/movimientos/<mov_id>", methods=["DELETE"])
+@login_required
+@admin_required
+def eliminar_movimiento(mov_id):
+    supabase.table("csv_tx").delete().eq("id", mov_id).execute()
+    return jsonify({"ok": True})
+
+
