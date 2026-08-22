@@ -630,6 +630,7 @@ function switchTabT(tab, el) {
   el.classList.add("active");
   ["tCargar","tAsignar","tCargos","tResumen"].forEach(id => document.getElementById(id).style.display = "none");
   document.getElementById("t" + tab[0].toUpperCase() + tab.slice(1)).style.display = "";
+  if (tab === "asignar") renderCsvAsignar();
   if (tab === "cargos") cargarCargosFijos();
   if (tab === "resumen") renderResumenTarjeta();
 }
@@ -680,7 +681,7 @@ function renderCsvPreview() {
       <div class="list-body"><div class="list-title">${m.descripcion}</div><div class="list-sub">${m.fecha || "—"}${m.cuota_total ? ` · cuota ${m.cuota_actual}/${m.cuota_total}` : ""}</div></div>
       <div class="list-right">
         <div class="list-amount">${cop(m.monto)}</div>
-        ${m.valor_total && m.valor_total !== m.monto ? `<div class="list-meta">Compra total: ${cop(m.valor_total)}</div>` : ""}
+        ${m.valor_total && m.valor_total !== m.monto ? `<div class="valor-compra-total">Compra total: ${cop(m.valor_total)}</div>` : ""}
       </div>
     </div>`).join("")}
     ${STATE.csvPendientes.length > 8 ? `<div class="list-sub" style="padding-top:8px">+ ${STATE.csvPendientes.length-8} más…</div>` : ""}
@@ -696,11 +697,11 @@ function renderCsvAsignar() {
   const cont = document.getElementById("csvAsignar");
   if (!STATE.csvPendientes.length) { cont.innerHTML = `<div class="empty"><p>Carga un PDF primero</p></div>`; return; }
   cont.innerHTML = STATE.csvPendientes.map(m => {
-    const infoExtra = m.valor_total && m.valor_total !== m.monto
-      ? ` · compra total ${cop(m.valor_total)}` : "";
+    const compraHtml = m.valor_total && m.valor_total !== m.monto
+      ? `<div class="valor-compra-total">Compra total: ${cop(m.valor_total)}</div>` : "";
     if (!m.dividir) {
       return `<div class="list-item">
-        <div class="list-body"><div class="list-title">${m.descripcion}</div><div class="list-sub">${m.fecha || "—"} · cuota ${cop(m.monto)}${infoExtra}</div></div>
+        <div class="list-body"><div class="list-title">${m.descripcion}</div><div class="list-sub">${m.fecha || "—"} · cuota ${cop(m.monto)}</div>${compraHtml}</div>
         <select class="form-select" style="width:auto;font-size:12px;padding:5px 8px" onchange="asignarMov('${m.id}', this.value)">
           <option value="">Sin asignar</option>
           ${STATE.usuarios.map(u => `<option value="${u.id}" ${m.responsable_id===u.id?"selected":""}>${u.nombre}</option>`).join("")}
@@ -712,7 +713,7 @@ function renderCsvAsignar() {
     const cuadra = Math.abs(suma - m.monto) < 1;
     return `<div class="list-item" style="flex-direction:column;align-items:stretch;gap:8px">
       <div style="display:flex;justify-content:space-between;align-items:center">
-        <div class="list-body"><div class="list-title">${m.descripcion}</div><div class="list-sub">${m.fecha || "—"} · cuota total ${cop(m.monto)}${infoExtra}</div></div>
+        <div class="list-body"><div class="list-title">${m.descripcion}</div><div class="list-sub">${m.fecha || "—"} · cuota total ${cop(m.monto)}</div>${compraHtml}</div>
         <button class="btn btn-ghost btn-sm" onclick="toggleDividirMov('${m.id}')">Cancelar división</button>
       </div>
       <div style="display:grid;gap:6px">
@@ -879,7 +880,7 @@ async function renderResumenTarjeta() {
         </div>
         <div class="list-right">
           <div class="list-amount">${cop(m.monto)}</div>
-          ${m.valor_total && m.valor_total !== m.monto ? `<div class="list-meta">Compra: ${cop(m.valor_total)}</div>` : ""}
+          ${m.valor_total && m.valor_total !== m.monto ? `<div class="valor-compra-total">Compra: ${cop(m.valor_total)}</div>` : ""}
         </div>
         ${esAdmin ? `
           <button class="btn btn-ghost btn-sm" onclick="openModalEditMov('${m.id}')">✎</button>
@@ -1482,6 +1483,14 @@ async function descargarReporteImg() {
     initLogin();
   }
 })();
+
+
+
+
+
+
+
+
 
 
 
