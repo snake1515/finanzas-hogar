@@ -628,11 +628,12 @@ async function savePerfil() {
 function switchTabT(tab, el) {
   document.querySelectorAll("#page-tarjetas .tab").forEach(t => t.classList.remove("active"));
   el.classList.add("active");
-  ["tCargar","tAsignar","tCargos","tResumen"].forEach(id => document.getElementById(id).style.display = "none");
+  ["tCargar","tAsignar","tCargos","tResumen","tExtractos"].forEach(id => document.getElementById(id).style.display = "none");
   document.getElementById("t" + tab[0].toUpperCase() + tab.slice(1)).style.display = "";
   if (tab === "asignar") renderCsvAsignar();
   if (tab === "cargos") cargarCargosFijos();
   if (tab === "resumen") renderResumenTarjeta();
+  if (tab === "extractos") cargarExtractos();
 }
 function handleDropPDF(ev) {
   ev.preventDefault();
@@ -650,20 +651,25 @@ async function subirPDF(file, password = "") {
   const statusEl = document.getElementById("pdfStatus");
   statusEl.style.display = "block";
   statusEl.innerHTML = `<div class="alert-item info">Procesando PDF…</div>`;
+  const periodo = `${STATE.ano}-${String(STATE.mes+1).padStart(2,"0")}`;
   const fd = new FormData();
   fd.append("pdf", file);
+  fd.append("periodo", periodo);
   if (password) fd.append("password", password);
   try {
     const data = await apiForm("/tarjetas/procesar-pdf", fd);
     document.getElementById("pdfPasswordWrap").style.display = "none";
     const todos = data.movimientos.map(m => ({ ...m, id: uid(), responsable_id: "" }));
-    // Los pagos/abonos a la tarjeta (ej. "PAGOS RAPPIPAY APP") ya fueron hechos —
-    // no son un gasto que haya que repartir entre las personas, así que se separan
-    // y solo se muestran de forma informativa, sin pedir asignación.
-    STATE.csvPendientes = todos.filter(m => !m.es_pago_o_ajuste);
+    // Compras normales (a asignar), cargos fijos del extracto (intereses, cuota
+    // de manejo... — se pueden dividir) y pagos/abonos reales (informativos).
+    STATE.csvPendientes = todos.filter(m => !m.es_pago_o_ajuste && !m.es_cargo_fijo);
+    STATE.cargosDetectados = todos.filter(m => m.es_cargo_fijo);
     STATE.pagosDetectados = todos.filter(m => m.es_pago_o_ajuste);
-    statusEl.innerHTML = `<div class="alert-item info">${STATE.csvPendientes.length} compras por asignar
-      ${STATE.pagosDetectados.length ? ` · ${STATE.pagosDetectados.length} pagos/abonos detectados (no requieren asignación)` : ""}</div>`;
+    let msg = `${STATE.csvPendientes.length} compras por asignar`;
+    if (STATE.cargosDetectados.length) msg += ` · ${STATE.cargosDetectados.length} cargos fijos detectados`;
+    if (STATE.pagosDetectados.length) msg += ` · ${STATE.pagosDetectados.length} pagos/abonos (informativos)`;
+    msg += data.extracto && !data.extracto.error ? " · extracto guardado ✓" : " · el PDF no quedó guardado (revisa la configuración de Storage)";
+    statusEl.innerHTML = `<div class="alert-item info">${msg}</div>`;
     renderCsvPreview();
   } catch (e) {
     if (e.message.includes("contraseña") || e.message.includes("protegido")) {
@@ -680,7 +686,20 @@ function reintentarPDF() {
 }
 function renderCsvPreview() {
   const cont = document.getElementById("csvPreview");
-  if (!STATE.csvPendientes.length && !(STATE.pagosDetectados || []).length) { cont.innerHTML = ""; return; }
+  const hayAlgo = STATE.csvPendientes.length || (STATE.pagosDetectados||[]).length || (STATE.cargosDetectados||[]).length;
+  if (!hayAlgo) { cont.innerHTML = ""; return; }
+
+  const cargosHtml = (STATE.cargosDetectados || []).length ? `<div class="card" style="margin-top:12px">
+    <div class="card-header"><div class="card-title">🧾 Cargos fijos detectados (${STATE.cargosDetectados.length})</div>
+      <button class="btn btn-primary btn-sm" onclick="agregarTodosCargosDetectados()">+ Agregar todos</button></div>
+    <div class="list-sub" style="margin-bottom:8px">Intereses, cuota de manejo, IVA, seguros… Agrégalos como cargo fijo para dividirlos entre las personas en la pestaña "Cargos fijos".</div>
+    ${STATE.cargosDetectados.map(m => `<div class="list-item">
+      <div class="list-body"><div class="list-title">${m.descripcion}</div><div class="list-sub">${m.fecha || "—"}</div></div>
+      <div class="list-amount">${cop(m.monto)}</div>
+      <button class="btn btn-ghost btn-sm" onclick="agregarCargoDetectado('${m.id}')">+ Agregar</button>
+    </div>`).join("")}
+  </div>` : "";
+
   const pagosHtml = (STATE.pagosDetectados || []).length ? `<div class="card" style="margin-top:12px">
     <div class="card-header"><div class="card-title">💳 Pagos / abonos detectados (${STATE.pagosDetectados.length})</div></div>
     <div class="list-sub" style="margin-bottom:8px">Estos ya se pagaron — no se dividen ni se asignan a nadie, solo son informativos.</div>
@@ -689,7 +708,8 @@ function renderCsvPreview() {
       <div class="list-amount" style="color:${m.monto<0?'var(--green)':'var(--text)'}">${cop(m.monto)}</div>
     </div>`).join("")}
   </div>` : "";
-  if (!STATE.csvPendientes.length) { cont.innerHTML = pagosHtml; return; }
+
+  if (!STATE.csvPendientes.length) { cont.innerHTML = cargosHtml + pagosHtml; return; }
   cont.innerHTML = `<div class="card">
     <div class="card-header"><div class="card-title">Vista previa</div></div>
     ${STATE.csvPendientes.slice(0, 8).map(m => `<div class="list-item">
@@ -701,7 +721,25 @@ function renderCsvPreview() {
     </div>`).join("")}
     ${STATE.csvPendientes.length > 8 ? `<div class="list-sub" style="padding-top:8px">+ ${STATE.csvPendientes.length-8} más…</div>` : ""}
     <button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="switchTabT('asignar', document.querySelectorAll('#page-tarjetas .tab')[1])">Continuar a asignación →</button>
-  </div>${pagosHtml}`;
+  </div>${cargosHtml}${pagosHtml}`;
+}
+async function agregarCargoDetectado(id) {
+  const m = (STATE.cargosDetectados || []).find(x => x.id === id);
+  if (!m) return;
+  const periodo = `${STATE.ano}-${String(STATE.mes+1).padStart(2,"0")}`;
+  try {
+    await api("/cargos-fijos", { method: "POST", body: JSON.stringify({
+      descripcion: m.descripcion, monto: m.monto, tipo_reparto: "proporcional", periodo,
+    })});
+    STATE.cargosDetectados = STATE.cargosDetectados.filter(x => x.id !== id);
+    renderCsvPreview();
+    notify(`"${m.descripcion}" agregado a cargos fijos`, "success");
+  } catch (e) { notify(e.message, "error"); }
+}
+async function agregarTodosCargosDetectados() {
+  for (const m of [...(STATE.cargosDetectados || [])]) {
+    await agregarCargoDetectado(m.id);
+  }
 }
 function renderTarjetas() {
   document.getElementById("asignarTodosSelect").innerHTML = `<option value="">— elegir —</option>` +
@@ -887,6 +925,27 @@ async function eliminarCargoFijo(id) {
   await api(`/cargos-fijos/${id}`, { method: "DELETE" });
   cargarCargosFijos();
 }
+async function cargarExtractos() {
+  const periodo = `${STATE.ano}-${String(STATE.mes+1).padStart(2,"0")}`;
+  const cont = document.getElementById("extractosList");
+  cont.innerHTML = `<div class="empty"><p>Cargando…</p></div>`;
+  try {
+    const extractos = await api(`/tarjetas/extractos?periodo=${periodo}`);
+    const esAdmin = STATE.user.rol === "admin";
+    cont.innerHTML = extractos.map(e => `<div class="list-item">
+      <div class="list-body"><div class="list-title">📄 ${e.nombre_archivo}</div><div class="list-sub">${new Date(e.created_at).toLocaleDateString("es-CO",{day:"numeric",month:"long",year:"numeric"})}</div></div>
+      ${e.url ? `<a class="btn btn-ghost btn-sm" href="${e.url}" target="_blank" rel="noopener">Ver PDF</a>` : `<span class="list-sub">No disponible</span>`}
+      ${esAdmin ? `<button class="btn btn-danger btn-sm" onclick="eliminarExtracto('${e.id}')">✕</button>` : ""}
+    </div>`).join("") || `<div class="empty"><p>Sin extractos guardados este período</p></div>`;
+  } catch (e) {
+    cont.innerHTML = `<div class="empty"><p>No se pudieron cargar los extractos (¿ya creaste la tabla/bucket en Supabase?)</p></div>`;
+  }
+}
+async function eliminarExtracto(id) {
+  if (!confirm("¿Eliminar este extracto guardado? El PDF se borrará de forma permanente.")) return;
+  await api(`/tarjetas/extractos/${id}`, { method: "DELETE" });
+  cargarExtractos();
+}
 async function renderResumenTarjeta() {
   const periodo = `${STATE.ano}-${String(STATE.mes+1).padStart(2,"0")}`;
   const [movimientos, cargosFijos] = await Promise.all([
@@ -898,13 +957,23 @@ async function renderResumenTarjeta() {
   const porPersona = {};
   movimientos.forEach(m => {
     const key = m.responsable_id;
-    porPersona[key] = porPersona[key] || { total: 0, pendiente: 0, cargosFijos: 0 };
+    porPersona[key] = porPersona[key] || { total: 0, pendiente: 0, cargosFijos: 0, cargosDetalle: [] };
     porPersona[key].total += m.monto;
     porPersona[key].pendiente += m.capital_pendiente || 0;
   });
   const totalConsumo = Object.values(porPersona).reduce((s, d) => s + d.total, 0);
 
-  // Reparte cada cargo fijo entre las personas con movimientos (igualitario o proporcional)
+  // Si hay algún cargo fijo "igualitario", se reparte entre TODAS las personas
+  // registradas (no solo entre quienes ya usaron la tarjeta este período).
+  if (cargosFijos.some(c => c.tipo_reparto === "igualitario")) {
+    STATE.usuarios.forEach(u => {
+      porPersona[u.id] = porPersona[u.id] || { total: 0, pendiente: 0, cargosFijos: 0, cargosDetalle: [] };
+    });
+  }
+
+  // Reparte cada cargo fijo (igualitario o proporcional al consumo) y guarda
+  // el detalle de cuánto correspondió de CADA cargo a cada persona, para el
+  // reporte de la división.
   cargosFijos.forEach(c => {
     const ids = Object.keys(porPersona);
     if (!ids.length) return;
@@ -912,7 +981,9 @@ async function renderResumenTarjeta() {
       const share = c.tipo_reparto === "igualitario"
         ? c.monto / ids.length
         : (totalConsumo ? c.monto * (porPersona[uid].total / totalConsumo) : 0);
+      if (share <= 0) return;
       porPersona[uid].cargosFijos += share;
+      porPersona[uid].cargosDetalle.push({ descripcion: c.descripcion, valor: share });
     });
   });
 
@@ -927,6 +998,7 @@ async function renderResumenTarjeta() {
       return `<div class="list-item">${avatarHtml(u)}
         <div class="list-body"><div class="list-title">${u?.nombre || "—"}</div>
           <div class="list-sub">Consumo ${cop(d.total)}${d.cargosFijos > 0 ? ` + cargos fijos ${cop(d.cargosFijos)}` : ""}</div>
+          ${d.cargosDetalle.length ? `<div class="list-sub" style="font-size:11px">${d.cargosDetalle.map(c => `${c.descripcion}: ${cop(c.valor)}`).join(" · ")}</div>` : ""}
           ${d.pendiente > 0 ? `<div class="list-sub">Cuotas pendientes por pagar (meses futuros): ${cop(d.pendiente)}</div>` : ""}</div>
         <div class="list-amount">${cop(totalAPagar)}</div>
       </div>`;
@@ -964,6 +1036,17 @@ async function descargarReciboTarjeta() {
 
   const totalGeneral = entradas.reduce((s, [, d]) => s + d.total + d.cargosFijos, 0);
 
+  // Consolida cuánto de cada cargo fijo le tocó a cada persona (para el
+  // reporte de la división), agrupando por descripción del cargo.
+  const cargosConsolidados = {};
+  entradas.forEach(([uid, d]) => {
+    (d.cargosDetalle || []).forEach(c => {
+      cargosConsolidados[c.descripcion] = cargosConsolidados[c.descripcion] || { total: 0, porPersona: [] };
+      cargosConsolidados[c.descripcion].total += c.valor;
+      cargosConsolidados[c.descripcion].porPersona.push({ uid, valor: c.valor });
+    });
+  });
+
   // Elemento temporal fuera de pantalla, con el mismo estilo "recibo claro" que el resto de la app
   const wrap = document.createElement("div");
   wrap.style.position = "fixed";
@@ -986,6 +1069,14 @@ async function descargarReciboTarjeta() {
         <div class="rl-amt" style="color:#d9394c">${nomFmt(totalAPagar)}</div>
       </div>`;
     }).join("")}
+    ${Object.keys(cargosConsolidados).length ? `
+    <div class="rpt-section-title">Cargos fijos divididos</div>
+    ${Object.entries(cargosConsolidados).map(([desc, c]) => `
+      <div class="rpt-row">
+        <div><div class="rl-main">${desc}</div>
+          <div class="rl-sub">${c.porPersona.map(p => `${STATE.usuarios.find(u=>u.id===p.uid)?.nombre || "—"}: ${nomFmt(p.valor)}`).join(" · ")}</div></div>
+        <div class="rl-amt">${nomFmt(c.total)}</div>
+      </div>`).join("")}` : ""}
     <div class="rpt-footer">Generado el ${new Date().toLocaleDateString("es-CO",{day:"numeric",month:"long",year:"numeric"})} · FinanzasHogar</div>
   </div>`;
   document.body.appendChild(wrap);
@@ -1623,3 +1714,4 @@ async function descargarReporteImg() {
     initLogin();
   }
 })();
+
