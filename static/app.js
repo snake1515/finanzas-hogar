@@ -668,6 +668,7 @@ async function subirPDF(file, password = "") {
     let msg = `${STATE.csvPendientes.length} compras por asignar`;
     if (STATE.cargosDetectados.length) msg += ` · ${STATE.cargosDetectados.length} cargos fijos detectados`;
     if (STATE.pagosDetectados.length) msg += ` · ${STATE.pagosDetectados.length} pagos/abonos (informativos)`;
+    if (data.duplicados_descartados > 0) msg += ` · ⚠️ se descartaron ${data.duplicados_descartados} línea(s) duplicada(s) del PDF (posible artefacto de extracción)`;
     msg += data.extracto && !data.extracto.error ? " · extracto guardado ✓" : " · el PDF no quedó guardado (revisa la configuración de Storage)";
     statusEl.innerHTML = `<div class="alert-item info">${msg}</div>`;
     renderCsvPreview();
@@ -865,7 +866,7 @@ async function guardarMovimientosAsignados() {
     await api("/tarjetas/movimientos", { method: "POST", body: JSON.stringify({ movimientos: filas }) });
     STATE.csvPendientes = STATE.csvPendientes.filter(m => !idsGuardados.includes(m.id));
     notify("Movimientos guardados", "success");
-    switchTabT("resumen", document.querySelectorAll("#page-tarjetas .tab")[3]);
+    switchTabT("cargos", document.querySelectorAll("#page-tarjetas .tab")[2]);
   } catch (e) { notify(e.message, "error"); }
 }
 async function cargarCargosFijos() {
@@ -1714,4 +1715,5 @@ async function descargarReporteImg() {
     initLogin();
   }
 })();
+
 
