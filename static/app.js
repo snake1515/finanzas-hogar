@@ -1382,7 +1382,11 @@ function renderReportes() {
   const porCategoria = agruparGastosPorCategoria(gastos);
   const maxCat = porCategoria[0]?.total || 1;
 
-  if (!gastos.length && !ingresos.length) {
+  // Préstamos con cuota pendiente por pagar este mes (aún no completados)
+  const prestamosActivos = STATE.prestamos.filter(p => p.pagadas < p.cuotas);
+  const totalCuotasPrestamos = prestamosActivos.reduce((s, p) => s + p.cuota, 0);
+
+  if (!gastos.length && !ingresos.length && !prestamosActivos.length) {
     cont.innerHTML = `<div class="card"><div class="empty"><div class="icon">📊</div><p>No hay movimientos en ${MESES_NOMBRE[STATE.mes]} ${STATE.ano}</p></div></div>`;
     return;
   }
@@ -1398,7 +1402,17 @@ function renderReportes() {
         <div class="rpt-stat"><div class="rpt-stat-label">Ingresos</div><div class="rpt-stat-val" style="color:#1a9e5c">${nomFmt(totalIngresos)}</div></div>
         <div class="rpt-stat"><div class="rpt-stat-label">Gastos</div><div class="rpt-stat-val" style="color:#d9394c">${nomFmt(totalGastos)}</div></div>
         <div class="rpt-stat"><div class="rpt-stat-label">Balance</div><div class="rpt-stat-val" style="color:${balance>=0?'#1a9e5c':'#d9394c'}">${nomFmt(balance)}</div></div>
+        <div class="rpt-stat"><div class="rpt-stat-label">Cuotas préstamos</div><div class="rpt-stat-val" style="color:#c2740c">${nomFmt(totalCuotasPrestamos)}</div></div>
       </div>
+
+      <div class="rpt-section-title">🏦 Préstamos — cuotas a pagar este mes (${prestamosActivos.length})</div>
+      ${prestamosActivos.map(p => {
+        const resp = STATE.usuarios.find(u => u.id === p.responsable_id);
+        return `<div class="rpt-row">
+          <div><div class="rl-main">${p.nombre}</div><div class="rl-sub">${resp?.nombre || "—"} · cuota ${p.pagadas + 1}/${p.cuotas}${p.dia_pago ? ` · vence el día ${p.dia_pago}` : ""}</div></div>
+          <div class="rl-amt" style="color:#c2740c">${nomFmt(p.cuota)}</div>
+        </div>`;
+      }).join("") || `<div style="font-size:12px;color:#999;padding:6px 0">Sin préstamos activos</div>`}
 
       <div class="rpt-section-title">Resumen de gastos por categoría</div>
       ${porCategoria.map(c => `
@@ -1483,6 +1497,22 @@ async function descargarReporteImg() {
     initLogin();
   }
 })();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
