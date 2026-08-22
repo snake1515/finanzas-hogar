@@ -1,4 +1,6 @@
 import re
+import io
+from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify
 import pdfplumber
 from supabase_client import supabase
@@ -6,23 +8,49 @@ from decorators import login_required, admin_required
 
 tarjetas_bp = Blueprint("tarjetas", __name__)
 
+EXTRACTOS_BUCKET = "extractos-tarjeta"
 
 @tarjetas_bp.route("/procesar-pdf", methods=["POST"])
 @login_required
 def procesar_pdf():
     archivo = request.files.get("pdf")
     password = request.form.get("password", "")
+    periodo = request.form.get("periodo", "")  # "YYYY-MM", enviado por el frontend
     if not archivo:
         return jsonify({"error": "No se envió ningún PDF"}), 400
 
+    contenido = archivo.read()
+
     try:
-        with pdfplumber.open(archivo, password=password or None) as pdf:
+        with pdfplumber.open(io.BytesIO(contenido), password=password or None) as pdf:
             texto_completo = "\n".join(page.extract_text() or "" for page in pdf.pages)
     except Exception as e:
         return jsonify({"error": "PDF protegido o contraseña incorrecta", "detalle": str(e)}), 422
 
     movimientos = extraer_movimientos_rappicard(texto_completo)
-    return jsonify({"movimientos": movimientos})
+
+    # Guarda el PDF original en Supabase Storage para poder consultarlo después.
+    # Si esto falla (bucket/tabla no configurados), no bloqueamos el procesamiento
+    # de los movimientos — solo se informa que el extracto no quedó guardado.
+    extracto_guardado = None
+    if periodo:
+        try:
+            nombre_archivo = archivo.filename or "extracto.pdf"
+            marca = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+            ruta = f"{periodo}/{marca}_{nombre_archivo}"
+            supabase.storage.from_(EXTRACTOS_BUCKET).upload(
+                ruta, contenido, {"content-type": "application/pdf"}
+            )
+            fila = supabase.table("extractos").insert({
+                "periodo": periodo,
+                "nombre_archivo": nombre_archivo,
+                "storage_path": ruta,
+            }).execute()
+            extracto_guardado = fila.data[0] if fila.data else None
+        except Exception as e:
+            extracto_guardado = {"error": str(e)}
+
+    return jsonify({"movimientos": movimientos, "extracto": extracto_guardado})
 
 
 # ── Parser del extracto RappiCard/Davivienda ── (sin cambios, ya validado)
@@ -35,6 +63,28 @@ PATRON_FILA = re.compile(
     r"([\d,]+%)\s+"
     r"([\d,]+%)\s*$"
 )
+
+# ── Clasificación de líneas sin cuotas (cuotas == "N/A") ──
+# Pagos/abonos reales a la tarjeta: ya se pagaron, no se dividen entre nadie.
+PATRON_PAGO = re.compile(r"PAGO|ABONO|REVERSO|AJUSTE\s*CR[EÉ]DITO", re.I)
+# Cargos fijos del propio extracto (intereses, cuota de manejo, IVA, seguros,
+# comisiones): SÍ deben poder dividirse entre las personas, igual que un
+# "cargo fijo" manual — por eso se marcan aparte de los pagos.
+PATRON_CARGO_FIJO = re.compile(
+    r"CUOTA\s*DE\s*MANEJO|MANEJO\s*(DE\s*)?TARJETA|INTERES|IVA|SEGURO|"
+    r"COMISI[OÓ]N|COSTO\s*POR\s*RETIRO",
+    re.I,
+)
+
+
+def _clasificar_sin_cuotas(desc):
+    """Para líneas que no son compra a cuotas (cuotas == 'N/A'): decide si es
+    un cargo fijo divisible (intereses, cuota de manejo...) o un pago/ajuste
+    puramente informativo. Por defecto, si no matchea nada, se trata como
+    pago/ajuste (comportamiento previo, más seguro)."""
+    if PATRON_CARGO_FIJO.search(desc):
+        return False, True  # (es_pago_o_ajuste, es_cargo_fijo)
+    return True, False
 
 
 def _parse_money(s):
@@ -77,6 +127,12 @@ def extraer_movimientos_rappicard(texto: str):
         # valor completo de la compra original, para que no se pierda ese dato.
         monto = capital_facturado if capital_facturado is not None else valor_transaccion
 
+        es_sin_cuotas = (cuotas == "N/A")
+        if es_sin_cuotas:
+            es_pago, es_cargo_fijo = _clasificar_sin_cuotas(desc)
+        else:
+            es_pago, es_cargo_fijo = False, False
+
         movimientos.append({
             "fecha": fecha,
             "descripcion": desc,
@@ -86,10 +142,43 @@ def extraer_movimientos_rappicard(texto: str):
             "cuota_actual": cuota_actual,
             "cuota_total": cuota_total,
             "capital_pendiente": capital_pendiente,
-            "es_pago_o_ajuste": cuotas == "N/A",
+            "es_pago_o_ajuste": es_pago,
+            "es_cargo_fijo": es_cargo_fijo,
         })
 
     return movimientos
+
+
+@tarjetas_bp.route("/extractos", methods=["GET"])
+@login_required
+def listar_extractos():
+    periodo = request.args.get("periodo")
+    query = supabase.table("extractos").select("*")
+    if periodo:
+        query = query.eq("periodo", periodo)
+    res = query.order("created_at", desc=True).execute()
+    extractos = res.data or []
+    for e in extractos:
+        try:
+            firmada = supabase.storage.from_(EXTRACTOS_BUCKET).create_signed_url(e["storage_path"], 3600)
+            e["url"] = firmada.get("signedURL") or firmada.get("signed_url") or firmada.get("signedUrl")
+        except Exception:
+            e["url"] = None
+    return jsonify(extractos)
+
+
+@tarjetas_bp.route("/extractos/<extracto_id>", methods=["DELETE"])
+@login_required
+@admin_required
+def eliminar_extracto(extracto_id):
+    fila = supabase.table("extractos").select("storage_path").eq("id", extracto_id).single().execute()
+    if fila.data:
+        try:
+            supabase.storage.from_(EXTRACTOS_BUCKET).remove([fila.data["storage_path"]])
+        except Exception:
+            pass
+    supabase.table("extractos").delete().eq("id", extracto_id).execute()
+    return jsonify({"ok": True})
 
 
 @tarjetas_bp.route("/movimientos", methods=["GET"])
@@ -134,5 +223,7 @@ def editar_movimiento(mov_id):
 def eliminar_movimiento(mov_id):
     supabase.table("csv_tx").delete().eq("id", mov_id).execute()
     return jsonify({"ok": True})
+
+
 
 
