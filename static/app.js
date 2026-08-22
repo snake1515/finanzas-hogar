@@ -228,12 +228,16 @@ function renderDashboard() {
   const totalIngresos = STATE.ingresos.reduce((s, i) => s + i.monto, 0);
   const balance = totalIngresos - totalGastos;
   const cuotasPend = STATE.prestamos.reduce((s, p) => s + Math.max(0, p.cuotas - p.pagadas), 0);
+  const deudaPrestamos = STATE.prestamos.reduce((s, p) => {
+    const restante = p.monto - (p.monto / p.cuotas) * p.pagadas;
+    return s + Math.max(0, restante);
+  }, 0);
 
   document.getElementById("statsRow").innerHTML = `
     <div class="stat-card"><div class="stat-label">Gastos del mes</div><div class="stat-value">${cop(totalGastos)}</div></div>
     <div class="stat-card"><div class="stat-label">Ingresos del mes</div><div class="stat-value">${cop(totalIngresos)}</div></div>
     <div class="stat-card"><div class="stat-label">Balance</div><div class="stat-value" style="color:${balance>=0?'var(--green)':'var(--red)'}">${cop(balance)}</div></div>
-    <div class="stat-card"><div class="stat-label">Cuotas pendientes</div><div class="stat-value">${cuotasPend}</div></div>`;
+    <div class="stat-card"><div class="stat-label">Deuda en préstamos</div><div class="stat-value" style="color:var(--orange)">${cop(deudaPrestamos)}</div><div class="stat-note">${cuotasPend} cuotas pendientes</div></div>`;
 
   // Donut por categoría
   const porCat = {};
@@ -285,7 +289,7 @@ function movItemHtml(g) {
   const resp = STATE.usuarios.find(u => u.id === g.responsable_id);
   return `<div class="list-item">
     <div class="list-icon" style="background:${info.color}22">${info.icon}</div>
-    <div class="list-body"><div class="list-title">${g.descripcion}</div>
+    <div class="list-body"><div class="list-title">${g.descripcion} ${g.adjunto_url ? '📎' : ''}</div>
       <div class="list-sub">${resp ? resp.nombre : "—"} · ${g.fecha}</div></div>
     <div class="list-right"><div class="list-amount">${cop(g.monto)}</div>
       ${g.tipo==='cuota' ? `<div class="list-meta">Cuota ${g.cuota_actual}/${g.cuota_total}</div>` : ""}</div>
@@ -323,7 +327,28 @@ function openModalGasto(id) {
   document.getElementById("gCuotaGrp").style.display = g?.tipo === "cuota" ? "" : "none";
   document.getElementById("gCuotaA").value = g?.cuota_actual || "";
   document.getElementById("gCuotaT").value = g?.cuota_total || "";
+  document.getElementById("gFoto").value = "";
+  STATE._fotoGastoSeleccionada = null;
+  const wrap = document.getElementById("gFotoPreviewWrap");
+  if (g?.adjunto_url) {
+    wrap.style.display = "block";
+    document.getElementById("gFotoPreview").src = "";
+    api(`/gastos/${g.id}/foto`).then(r => { document.getElementById("gFotoPreview").src = r.url; }).catch(() => {});
+  } else {
+    wrap.style.display = "none";
+  }
   openModal("mGasto");
+}
+function previewFotoGasto(input) {
+  const file = input.files[0];
+  if (!file) return;
+  STATE._fotoGastoSeleccionada = file;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById("gFotoPreviewWrap").style.display = "block";
+    document.getElementById("gFotoPreview").src = e.target.result;
+  };
+  reader.readAsDataURL(file);
 }
 async function saveGasto() {
   const id = document.getElementById("gEditId").value;
@@ -339,8 +364,17 @@ async function saveGasto() {
   };
   if (!payload.descripcion || !payload.monto) return notify("Completa descripción y monto", "error");
   try {
+    let gastoId = id;
     if (id) await api(`/gastos/${id}`, { method: "PUT", body: JSON.stringify(payload) });
-    else await api("/gastos", { method: "POST", body: JSON.stringify(payload) });
+    else {
+      const creado = await api("/gastos", { method: "POST", body: JSON.stringify(payload) });
+      gastoId = creado.id;
+    }
+    if (STATE._fotoGastoSeleccionada) {
+      const fd = new FormData();
+      fd.append("foto", STATE._fotoGastoSeleccionada);
+      await apiForm(`/gastos/${gastoId}/foto`, fd);
+    }
     closeModal("mGasto");
     await cargarMes();
     renderAll();
@@ -643,8 +677,11 @@ function renderCsvPreview() {
   cont.innerHTML = `<div class="card">
     <div class="card-header"><div class="card-title">Vista previa</div></div>
     ${STATE.csvPendientes.slice(0, 8).map(m => `<div class="list-item">
-      <div class="list-body"><div class="list-title">${m.descripcion}</div><div class="list-sub">${m.fecha || "—"}</div></div>
-      <div class="list-amount">${cop(m.monto)}</div>
+      <div class="list-body"><div class="list-title">${m.descripcion}</div><div class="list-sub">${m.fecha || "—"}${m.cuota_total ? ` · cuota ${m.cuota_actual}/${m.cuota_total}` : ""}</div></div>
+      <div class="list-right">
+        <div class="list-amount">${cop(m.monto)}</div>
+        ${m.valor_total && m.valor_total !== m.monto ? `<div class="list-meta">Compra total: ${cop(m.valor_total)}</div>` : ""}
+      </div>
     </div>`).join("")}
     ${STATE.csvPendientes.length > 8 ? `<div class="list-sub" style="padding-top:8px">+ ${STATE.csvPendientes.length-8} más…</div>` : ""}
     <button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="switchTabT('asignar', document.querySelectorAll('#page-tarjetas .tab')[1])">Continuar a asignación →</button>
@@ -658,14 +695,71 @@ function renderTarjetas() {
 function renderCsvAsignar() {
   const cont = document.getElementById("csvAsignar");
   if (!STATE.csvPendientes.length) { cont.innerHTML = `<div class="empty"><p>Carga un PDF primero</p></div>`; return; }
-  cont.innerHTML = STATE.csvPendientes.map(m => `
-    <div class="list-item">
-      <div class="list-body"><div class="list-title">${m.descripcion}</div><div class="list-sub">${m.fecha || "—"} · ${cop(m.monto)}</div></div>
-      <select class="form-select" style="width:auto;font-size:12px;padding:5px 8px" onchange="asignarMov('${m.id}', this.value)">
-        <option value="">Sin asignar</option>
-        ${STATE.usuarios.map(u => `<option value="${u.id}" ${m.responsable_id===u.id?"selected":""}>${u.nombre}</option>`).join("")}
-      </select>
-    </div>`).join("");
+  cont.innerHTML = STATE.csvPendientes.map(m => {
+    const infoExtra = m.valor_total && m.valor_total !== m.monto
+      ? ` · compra total ${cop(m.valor_total)}` : "";
+    if (!m.dividir) {
+      return `<div class="list-item">
+        <div class="list-body"><div class="list-title">${m.descripcion}</div><div class="list-sub">${m.fecha || "—"} · cuota ${cop(m.monto)}${infoExtra}</div></div>
+        <select class="form-select" style="width:auto;font-size:12px;padding:5px 8px" onchange="asignarMov('${m.id}', this.value)">
+          <option value="">Sin asignar</option>
+          ${STATE.usuarios.map(u => `<option value="${u.id}" ${m.responsable_id===u.id?"selected":""}>${u.nombre}</option>`).join("")}
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="toggleDividirMov('${m.id}')">Dividir</button>
+      </div>`;
+    }
+    const suma = (m.splits || []).reduce((s, x) => s + (x.monto || 0), 0);
+    const cuadra = Math.abs(suma - m.monto) < 1;
+    return `<div class="list-item" style="flex-direction:column;align-items:stretch;gap:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="list-body"><div class="list-title">${m.descripcion}</div><div class="list-sub">${m.fecha || "—"} · cuota total ${cop(m.monto)}${infoExtra}</div></div>
+        <button class="btn btn-ghost btn-sm" onclick="toggleDividirMov('${m.id}')">Cancelar división</button>
+      </div>
+      <div style="display:grid;gap:6px">
+        ${STATE.usuarios.map(u => {
+          const split = (m.splits || []).find(s => s.responsable_id === u.id);
+          return `<div style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" ${split ? "checked" : ""} onchange="toggleSplitPersona('${m.id}','${u.id}', this.checked)">
+            <span style="flex:1;font-size:13px">${u.nombre}</span>
+            <input type="text" inputmode="numeric" class="form-input money-input" style="width:120px;padding:5px 8px;font-size:12px"
+              placeholder="$ 0" value="${split ? '$ ' + split.monto.toLocaleString('es-CO') : ''}"
+              ${split ? "" : "disabled"} oninput="actualizarSplitMonto('${m.id}','${u.id}', this)">
+          </div>`;
+        }).join("")}
+      </div>
+      <div class="list-sub" style="color:${cuadra ? 'var(--green)' : 'var(--red)'}">
+        Repartido: ${cop(suma)} de ${cop(m.monto)} ${cuadra ? "✓" : "— no cuadra todavía"}
+      </div>
+    </div>`;
+  }).join("");
+}
+function toggleDividirMov(id) {
+  const m = STATE.csvPendientes.find(x => x.id === id);
+  if (!m) return;
+  m.dividir = !m.dividir;
+  if (m.dividir) { m.splits = []; m.responsable_id = ""; }
+  renderCsvAsignar();
+}
+function toggleSplitPersona(movId, userId, checked) {
+  const m = STATE.csvPendientes.find(x => x.id === movId);
+  if (!m) return;
+  m.splits = m.splits || [];
+  if (checked) {
+    const restantes = m.splits.length;
+    const partesFuturas = restantes + 1;
+    const yaAsignado = m.splits.reduce((s, x) => s + x.monto, 0);
+    const sugerido = Math.max(0, Math.round((m.monto - yaAsignado) / 1));
+    m.splits.push({ responsable_id: userId, monto: restantes === 0 ? m.monto : sugerido });
+  } else {
+    m.splits = m.splits.filter(x => x.responsable_id !== userId);
+  }
+  renderCsvAsignar();
+}
+function actualizarSplitMonto(movId, userId, input) {
+  const m = STATE.csvPendientes.find(x => x.id === movId);
+  if (!m) return;
+  const split = (m.splits || []).find(x => x.responsable_id === userId);
+  if (split) split.monto = moneyValue(input);
 }
 function asignarMov(id, respId) {
   const m = STATE.csvPendientes.find(x => x.id === id);
@@ -674,17 +768,48 @@ function asignarMov(id, respId) {
 function asignarTodos() {
   const respId = document.getElementById("asignarTodosSelect").value;
   if (!respId) return;
-  STATE.csvPendientes.forEach(m => { if (!m.responsable_id) m.responsable_id = respId; });
+  STATE.csvPendientes.forEach(m => { if (!m.dividir && !m.responsable_id) m.responsable_id = respId; });
   renderCsvAsignar();
 }
 async function guardarMovimientosAsignados() {
-  const listos = STATE.csvPendientes.filter(m => m.responsable_id);
-  if (!listos.length) return notify("Asigna al menos un movimiento", "error");
   const periodo = `${STATE.ano}-${String(STATE.mes+1).padStart(2,"0")}`;
-  const filas = listos.map(({ id, ...m }) => ({ ...m, periodo }));
+  const filas = [];
+  const idsGuardados = [];
+
+  for (const m of STATE.csvPendientes) {
+    if (m.dividir) {
+      const suma = (m.splits || []).reduce((s, x) => s + x.monto, 0);
+      if (!m.splits.length) continue;
+      if (Math.abs(suma - m.monto) >= 1) {
+        notify(`"${m.descripcion}": la división no suma el total de la cuota — revísala`, "error");
+        continue;
+      }
+      m.splits.forEach(split => {
+        const ratio = m.monto ? split.monto / m.monto : 0;
+        filas.push({
+          descripcion: `${m.descripcion} (dividido)`,
+          monto: split.monto,
+          valor_total: m.valor_total != null ? Math.round(m.valor_total * ratio) : null,
+          capital_pendiente: m.capital_pendiente != null ? Math.round(m.capital_pendiente * ratio) : null,
+          cuota_actual: m.cuota_actual, cuota_total: m.cuota_total,
+          fecha: m.fecha, responsable_id: split.responsable_id, periodo,
+        });
+      });
+      idsGuardados.push(m.id);
+    } else if (m.responsable_id) {
+      filas.push({
+        descripcion: m.descripcion, monto: m.monto, valor_total: m.valor_total,
+        capital_pendiente: m.capital_pendiente, cuota_actual: m.cuota_actual,
+        cuota_total: m.cuota_total, fecha: m.fecha, responsable_id: m.responsable_id, periodo,
+      });
+      idsGuardados.push(m.id);
+    }
+  }
+
+  if (!filas.length) return notify("Asigna o divide al menos un movimiento", "error");
   try {
     await api("/tarjetas/movimientos", { method: "POST", body: JSON.stringify({ movimientos: filas }) });
-    STATE.csvPendientes = STATE.csvPendientes.filter(m => !m.responsable_id);
+    STATE.csvPendientes = STATE.csvPendientes.filter(m => !idsGuardados.includes(m.id));
     notify("Movimientos guardados", "success");
     switchTabT("resumen", document.querySelectorAll("#page-tarjetas .tab")[3]);
   } catch (e) { notify(e.message, "error"); }
@@ -720,18 +845,87 @@ async function eliminarCargoFijo(id) {
 async function renderResumenTarjeta() {
   const periodo = `${STATE.ano}-${String(STATE.mes+1).padStart(2,"0")}`;
   const movimientos = await api(`/tarjetas/movimientos?periodo=${periodo}`);
+  STATE.movimientosTarjeta = movimientos;
+
   const porPersona = {};
   movimientos.forEach(m => {
     const key = m.responsable_id;
-    porPersona[key] = (porPersona[key] || 0) + m.monto;
+    porPersona[key] = porPersona[key] || { total: 0, pendiente: 0 };
+    porPersona[key].total += m.monto;
+    porPersona[key].pendiente += m.capital_pendiente || 0;
   });
-  document.getElementById("csvResumen").innerHTML = `<div class="card">
+
+  const esAdmin = STATE.user.rol === "admin";
+
+  const resumenHtml = `<div class="card" style="margin-bottom:12px">
     <div class="card-header"><div class="card-title">Resumen del período</div></div>
-    ${Object.entries(porPersona).map(([uid, total]) => {
+    ${Object.entries(porPersona).map(([uid, d]) => {
       const u = STATE.usuarios.find(x => x.id === uid);
-      return `<div class="list-item">${avatarHtml(u)}<div class="list-body"><div class="list-title">${u?.nombre || "—"}</div></div><div class="list-amount">${cop(total)}</div></div>`;
+      return `<div class="list-item">${avatarHtml(u)}
+        <div class="list-body"><div class="list-title">${u?.nombre || "—"}</div>
+          ${d.pendiente > 0 ? `<div class="list-sub">Cuotas pendientes por pagar (meses futuros): ${cop(d.pendiente)}</div>` : ""}</div>
+        <div class="list-amount">${cop(d.total)}</div>
+      </div>`;
     }).join("") || `<div class="empty"><p>Sin movimientos guardados este período</p></div>`}
   </div>`;
+
+  const detalleHtml = `<div class="card">
+    <div class="card-header"><div class="card-title">Detalle de movimientos</div></div>
+    ${movimientos.map(m => `
+      <div class="list-item">
+        <div class="list-body">
+          <div class="list-title">${m.descripcion}</div>
+          <div class="list-sub">${m.usuarios?.nombre || "—"} · ${m.fecha}${m.cuota_total ? ` · cuota ${m.cuota_actual}/${m.cuota_total}` : ""}</div>
+        </div>
+        <div class="list-right">
+          <div class="list-amount">${cop(m.monto)}</div>
+          ${m.valor_total && m.valor_total !== m.monto ? `<div class="list-meta">Compra: ${cop(m.valor_total)}</div>` : ""}
+        </div>
+        ${esAdmin ? `
+          <button class="btn btn-ghost btn-sm" onclick="openModalEditMov('${m.id}')">✎</button>
+          <button class="btn btn-danger btn-sm" onclick="eliminarMovimientoTarjeta('${m.id}')">✕</button>
+        ` : ""}
+      </div>`).join("") || `<div class="empty"><p>Sin movimientos</p></div>`}
+  </div>`;
+
+  document.getElementById("csvResumen").innerHTML = resumenHtml + detalleHtml;
+}
+function openModalEditMov(id) {
+  const m = STATE.movimientosTarjeta.find(x => x.id === id);
+  if (!m) return;
+  document.getElementById("emResp").innerHTML = STATE.usuarios.map(u => `<option value="${u.id}">${u.nombre}</option>`).join("");
+  document.getElementById("emId").value = m.id;
+  document.getElementById("emDesc").value = m.descripcion;
+  setMoneyValue(document.getElementById("emMonto"), m.monto);
+  setMoneyValue(document.getElementById("emValorTotal"), m.valor_total);
+  document.getElementById("emResp").value = m.responsable_id;
+  document.getElementById("emFecha").value = m.fecha;
+  document.getElementById("emCuotaA").value = m.cuota_actual || "";
+  document.getElementById("emCuotaT").value = m.cuota_total || "";
+  openModal("mEditMov");
+}
+async function saveEditMov() {
+  const id = document.getElementById("emId").value;
+  const payload = {
+    descripcion: document.getElementById("emDesc").value,
+    monto: moneyValue(document.getElementById("emMonto")),
+    valor_total: moneyValue(document.getElementById("emValorTotal")) || null,
+    responsable_id: document.getElementById("emResp").value,
+    fecha: document.getElementById("emFecha").value,
+    cuota_actual: parseInt(document.getElementById("emCuotaA").value) || null,
+    cuota_total: parseInt(document.getElementById("emCuotaT").value) || null,
+  };
+  try {
+    await api(`/tarjetas/movimientos/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+    closeModal("mEditMov");
+    renderResumenTarjeta();
+    notify("Movimiento actualizado", "success");
+  } catch (e) { notify(e.message, "error"); }
+}
+async function eliminarMovimientoTarjeta(id) {
+  if (!confirm("¿Eliminar este movimiento?")) return;
+  await api(`/tarjetas/movimientos/${id}`, { method: "DELETE" });
+  renderResumenTarjeta();
 }
 
 /* ══════════════════════════════════════
@@ -795,23 +989,25 @@ async function savePorra() {
    ══════════════════════════════════════ */
 async function renderMercado() {
   const cont = document.getElementById("mercadoRow");
-  cont.innerHTML = `<div class="stat-card"><div class="stat-label">Dólar (TRM)</div><div class="stat-value">…</div></div>
-    <div class="stat-card"><div class="stat-label">Oro (gramo)</div><div class="stat-value">…</div></div>`;
+  cont.innerHTML = `<div class="stat-card-market"><div class="market-tag">Mercado</div><div class="stat-label">Dólar (TRM)</div><div class="stat-value">…</div></div>
+    <div class="stat-card-market"><div class="market-tag">Mercado</div><div class="stat-label">Oro (gramo)</div><div class="stat-value">…</div></div>`;
   try {
     const [trm, oro] = await Promise.all([api("/mercado/trm"), api("/mercado/oro")]);
     cont.innerHTML = `
-      <div class="stat-card">
+      <div class="stat-card-market">
+        <div class="market-tag">Mercado · no es tu dinero</div>
         <div class="stat-label">Dólar (TRM oficial)</div>
-        <div class="stat-value">${cop(trm.valor)}</div>
+        <div class="stat-value" style="color:var(--purple)">${cop(trm.valor)}</div>
         <div class="stat-note">Vigente desde ${trm.vigencia_desde ? trm.vigencia_desde.slice(0,10) : "—"}</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card-market">
+        <div class="market-tag">Mercado · no es tu dinero</div>
         <div class="stat-label">Oro (gramo, estimado)</div>
-        <div class="stat-value">${cop(oro.precio_gramo)}</div>
+        <div class="stat-value" style="color:var(--yellow)">${cop(oro.precio_gramo)}</div>
         <div class="stat-note">Spot internacional + TRM · no es precio de joyería</div>
       </div>`;
   } catch (e) {
-    cont.innerHTML = `<div class="stat-card" style="grid-column:span 2"><div class="stat-label">Datos de mercado</div>
+    cont.innerHTML = `<div class="stat-card-market" style="grid-column:span 2"><div class="stat-label">Datos de mercado</div>
       <div class="stat-note">No se pudieron cargar en este momento.</div></div>`;
   }
 }
@@ -1286,6 +1482,10 @@ async function descargarReporteImg() {
     initLogin();
   }
 })();
+
+
+
+
 
 
 
