@@ -27,7 +27,7 @@ def procesar_pdf():
     except Exception as e:
         return jsonify({"error": "PDF protegido o contraseña incorrecta", "detalle": str(e)}), 422
 
-    movimientos = extraer_movimientos_rappicard(texto_completo)
+    movimientos, duplicados_descartados = extraer_movimientos_rappicard(texto_completo)
 
     # Guarda el PDF original en Supabase Storage para poder consultarlo después.
     # Si esto falla (bucket/tabla no configurados), no bloqueamos el procesamiento
@@ -50,7 +50,11 @@ def procesar_pdf():
         except Exception as e:
             extracto_guardado = {"error": str(e)}
 
-    return jsonify({"movimientos": movimientos, "extracto": extracto_guardado})
+    return jsonify({
+        "movimientos": movimientos,
+        "extracto": extracto_guardado,
+        "duplicados_descartados": duplicados_descartados,
+    })
 
 
 # ── Parser del extracto RappiCard/Davivienda ── (sin cambios, ya validado)
@@ -96,6 +100,8 @@ def _parse_money(s):
 def extraer_movimientos_rappicard(texto: str):
     lineas = texto.splitlines()
     movimientos = []
+    vistos = set()
+    duplicados_descartados = 0
 
     for i, linea in enumerate(lineas):
         m = PATRON_FILA.match(linea.strip())
@@ -127,6 +133,18 @@ def extraer_movimientos_rappicard(texto: str):
         # valor completo de la compra original, para que no se pierda ese dato.
         monto = capital_facturado if capital_facturado is not None else valor_transaccion
 
+        # Algunos PDF de extracto duplican el texto internamente (dos capas de
+        # texto superpuestas u otro artefacto de generación del documento), y
+        # pdfplumber termina leyendo la misma línea más de una vez. Si la fila
+        # es IDÉNTICA en todos sus campos a una ya vista, la descartamos —
+        # una compra real repetida con exactitud byte a byte en fecha, monto,
+        # descripción y número de cuota es extremadamente improbable.
+        clave = (fecha, desc, tarjeta, monto, valor_transaccion, cuota_actual, cuota_total, capital_pendiente)
+        if clave in vistos:
+            duplicados_descartados += 1
+            continue
+        vistos.add(clave)
+
         es_sin_cuotas = (cuotas == "N/A")
         if es_sin_cuotas:
             es_pago, es_cargo_fijo = _clasificar_sin_cuotas(desc)
@@ -146,7 +164,7 @@ def extraer_movimientos_rappicard(texto: str):
             "es_cargo_fijo": es_cargo_fijo,
         })
 
-    return movimientos
+    return movimientos, duplicados_descartados
 
 
 @tarjetas_bp.route("/extractos", methods=["GET"])
@@ -223,6 +241,9 @@ def editar_movimiento(mov_id):
 def eliminar_movimiento(mov_id):
     supabase.table("csv_tx").delete().eq("id", mov_id).execute()
     return jsonify({"ok": True})
+
+
+
 
 
 
