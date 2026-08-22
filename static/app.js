@@ -656,8 +656,14 @@ async function subirPDF(file, password = "") {
   try {
     const data = await apiForm("/tarjetas/procesar-pdf", fd);
     document.getElementById("pdfPasswordWrap").style.display = "none";
-    STATE.csvPendientes = data.movimientos.map(m => ({ ...m, id: uid(), responsable_id: "" }));
-    statusEl.innerHTML = `<div class="alert-item info">${STATE.csvPendientes.length} movimientos encontrados</div>`;
+    const todos = data.movimientos.map(m => ({ ...m, id: uid(), responsable_id: "" }));
+    // Los pagos/abonos a la tarjeta (ej. "PAGOS RAPPIPAY APP") ya fueron hechos —
+    // no son un gasto que haya que repartir entre las personas, así que se separan
+    // y solo se muestran de forma informativa, sin pedir asignación.
+    STATE.csvPendientes = todos.filter(m => !m.es_pago_o_ajuste);
+    STATE.pagosDetectados = todos.filter(m => m.es_pago_o_ajuste);
+    statusEl.innerHTML = `<div class="alert-item info">${STATE.csvPendientes.length} compras por asignar
+      ${STATE.pagosDetectados.length ? ` · ${STATE.pagosDetectados.length} pagos/abonos detectados (no requieren asignación)` : ""}</div>`;
     renderCsvPreview();
   } catch (e) {
     if (e.message.includes("contraseña") || e.message.includes("protegido")) {
@@ -674,7 +680,16 @@ function reintentarPDF() {
 }
 function renderCsvPreview() {
   const cont = document.getElementById("csvPreview");
-  if (!STATE.csvPendientes.length) { cont.innerHTML = ""; return; }
+  if (!STATE.csvPendientes.length && !(STATE.pagosDetectados || []).length) { cont.innerHTML = ""; return; }
+  const pagosHtml = (STATE.pagosDetectados || []).length ? `<div class="card" style="margin-top:12px">
+    <div class="card-header"><div class="card-title">💳 Pagos / abonos detectados (${STATE.pagosDetectados.length})</div></div>
+    <div class="list-sub" style="margin-bottom:8px">Estos ya se pagaron — no se dividen ni se asignan a nadie, solo son informativos.</div>
+    ${STATE.pagosDetectados.map(m => `<div class="list-item">
+      <div class="list-body"><div class="list-title">${m.descripcion}</div><div class="list-sub">${m.fecha || "—"}</div></div>
+      <div class="list-amount" style="color:${m.monto<0?'var(--green)':'var(--text)'}">${cop(m.monto)}</div>
+    </div>`).join("")}
+  </div>` : "";
+  if (!STATE.csvPendientes.length) { cont.innerHTML = pagosHtml; return; }
   cont.innerHTML = `<div class="card">
     <div class="card-header"><div class="card-title">Vista previa</div></div>
     ${STATE.csvPendientes.slice(0, 8).map(m => `<div class="list-item">
@@ -686,7 +701,7 @@ function renderCsvPreview() {
     </div>`).join("")}
     ${STATE.csvPendientes.length > 8 ? `<div class="list-sub" style="padding-top:8px">+ ${STATE.csvPendientes.length-8} más…</div>` : ""}
     <button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="switchTabT('asignar', document.querySelectorAll('#page-tarjetas .tab')[1])">Continuar a asignación →</button>
-  </div>`;
+  </div>${pagosHtml}`;
 }
 function renderTarjetas() {
   document.getElementById("asignarTodosSelect").innerHTML = `<option value="">— elegir —</option>` +
@@ -817,13 +832,42 @@ async function guardarMovimientosAsignados() {
 }
 async function cargarCargosFijos() {
   const periodo = `${STATE.ano}-${String(STATE.mes+1).padStart(2,"0")}`;
-  STATE.cargosFijos = await api(`/cargos-fijos?periodo=${periodo}`);
-  document.getElementById("cargosFijosItems").innerHTML = STATE.cargosFijos.map(c => `
-    <div class="list-item">
-      <div class="list-body"><div class="list-title">${c.descripcion}</div><div class="list-sub">${c.tipo_reparto}</div></div>
-      <div class="list-amount">${cop(c.monto)}</div>
-      <button class="btn btn-danger btn-sm" onclick="eliminarCargoFijo('${c.id}')">✕</button>
-    </div>`).join("") || `<div class="empty"><p>Sin cargos registrados</p></div>`;
+  const [cargos, movimientos] = await Promise.all([
+    api(`/cargos-fijos?periodo=${periodo}`),
+    api(`/tarjetas/movimientos?periodo=${periodo}`),
+  ]);
+  STATE.cargosFijos = cargos;
+
+  // Consumo por persona este período (para el reparto proporcional)
+  const consumoPorPersona = {};
+  movimientos.forEach(m => { consumoPorPersona[m.responsable_id] = (consumoPorPersona[m.responsable_id] || 0) + m.monto; });
+  const totalConsumo = Object.values(consumoPorPersona).reduce((s, v) => s + v, 0);
+  const usuariosConMovimiento = STATE.usuarios.filter(u => consumoPorPersona[u.id] > 0);
+
+  document.getElementById("cargosFijosItems").innerHTML = STATE.cargosFijos.map(c => {
+    let reparto;
+    if (c.tipo_reparto === "igualitario") {
+      const porPersona = STATE.usuarios.length ? c.monto / STATE.usuarios.length : 0;
+      reparto = STATE.usuarios.map(u => ({ u, valor: porPersona }));
+    } else {
+      // proporcional al consumo de tarjeta de cada uno este período
+      reparto = usuariosConMovimiento.map(u => ({
+        u, valor: totalConsumo ? c.monto * (consumoPorPersona[u.id] / totalConsumo) : 0,
+      }));
+    }
+    return `<div class="list-item" style="flex-direction:column;align-items:stretch;gap:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="list-body"><div class="list-title">${c.descripcion}</div><div class="list-sub">${c.tipo_reparto === "igualitario" ? "Partes iguales" : "Proporcional al consumo"}</div></div>
+        <div class="list-amount">${cop(c.monto)}</div>
+        <button class="btn btn-danger btn-sm" onclick="eliminarCargoFijo('${c.id}')">✕</button>
+      </div>
+      <div style="display:grid;gap:3px;padding-left:4px">
+        ${reparto.length ? reparto.map(r => `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2)">
+          <span>${r.u.nombre}</span><span class="valor-compra-total" style="font-size:12px">${cop(r.valor)}</span>
+        </div>`).join("") : `<div style="font-size:12px;color:var(--text3)">Sin consumo registrado este período para repartir proporcionalmente</div>`}
+      </div>
+    </div>`;
+  }).join("") || `<div class="empty"><p>Sin cargos registrados</p></div>`;
 }
 async function agregarCargoFijo() {
   const periodo = `${STATE.ano}-${String(STATE.mes+1).padStart(2,"0")}`;
@@ -845,27 +889,46 @@ async function eliminarCargoFijo(id) {
 }
 async function renderResumenTarjeta() {
   const periodo = `${STATE.ano}-${String(STATE.mes+1).padStart(2,"0")}`;
-  const movimientos = await api(`/tarjetas/movimientos?periodo=${periodo}`);
+  const [movimientos, cargosFijos] = await Promise.all([
+    api(`/tarjetas/movimientos?periodo=${periodo}`),
+    api(`/cargos-fijos?periodo=${periodo}`),
+  ]);
   STATE.movimientosTarjeta = movimientos;
 
   const porPersona = {};
   movimientos.forEach(m => {
     const key = m.responsable_id;
-    porPersona[key] = porPersona[key] || { total: 0, pendiente: 0 };
+    porPersona[key] = porPersona[key] || { total: 0, pendiente: 0, cargosFijos: 0 };
     porPersona[key].total += m.monto;
     porPersona[key].pendiente += m.capital_pendiente || 0;
+  });
+  const totalConsumo = Object.values(porPersona).reduce((s, d) => s + d.total, 0);
+
+  // Reparte cada cargo fijo entre las personas con movimientos (igualitario o proporcional)
+  cargosFijos.forEach(c => {
+    const ids = Object.keys(porPersona);
+    if (!ids.length) return;
+    ids.forEach(uid => {
+      const share = c.tipo_reparto === "igualitario"
+        ? c.monto / ids.length
+        : (totalConsumo ? c.monto * (porPersona[uid].total / totalConsumo) : 0);
+      porPersona[uid].cargosFijos += share;
+    });
   });
 
   const esAdmin = STATE.user.rol === "admin";
 
   const resumenHtml = `<div class="card" style="margin-bottom:12px">
-    <div class="card-header"><div class="card-title">Resumen del período</div></div>
+    <div class="card-header"><div class="card-title">Resumen del período</div>
+      <button class="btn btn-ghost btn-sm" onclick="descargarReciboTarjeta()">📷 Generar recibo</button></div>
     ${Object.entries(porPersona).map(([uid, d]) => {
       const u = STATE.usuarios.find(x => x.id === uid);
+      const totalAPagar = d.total + d.cargosFijos;
       return `<div class="list-item">${avatarHtml(u)}
         <div class="list-body"><div class="list-title">${u?.nombre || "—"}</div>
+          <div class="list-sub">Consumo ${cop(d.total)}${d.cargosFijos > 0 ? ` + cargos fijos ${cop(d.cargosFijos)}` : ""}</div>
           ${d.pendiente > 0 ? `<div class="list-sub">Cuotas pendientes por pagar (meses futuros): ${cop(d.pendiente)}</div>` : ""}</div>
-        <div class="list-amount">${cop(d.total)}</div>
+        <div class="list-amount">${cop(totalAPagar)}</div>
       </div>`;
     }).join("") || `<div class="empty"><p>Sin movimientos guardados este período</p></div>`}
   </div>`;
@@ -889,7 +952,70 @@ async function renderResumenTarjeta() {
       </div>`).join("") || `<div class="empty"><p>Sin movimientos</p></div>`}
   </div>`;
 
+  STATE._resumenTarjetaPorPersona = porPersona; // para el recibo
+
   document.getElementById("csvResumen").innerHTML = resumenHtml + detalleHtml;
+}
+async function descargarReciboTarjeta() {
+  const porPersona = STATE._resumenTarjetaPorPersona || {};
+  const entradas = Object.entries(porPersona);
+  if (!entradas.length) return notify("No hay movimientos guardados este período para generar el recibo", "error");
+  if (typeof html2canvas === "undefined") return notify("No se pudo cargar el generador de imágenes", "error");
+
+  const totalGeneral = entradas.reduce((s, [, d]) => s + d.total + d.cargosFijos, 0);
+
+  // Elemento temporal fuera de pantalla, con el mismo estilo "recibo claro" que el resto de la app
+  const wrap = document.createElement("div");
+  wrap.style.position = "fixed";
+  wrap.style.left = "-9999px";
+  wrap.innerHTML = `<div class="rpt-card" style="width:360px">
+    <div class="rpt-header">
+      <div class="rpt-title">Distribución de tarjeta</div>
+      <div class="rpt-sub">${MESES_NOMBRE[STATE.mes]} ${STATE.ano}</div>
+    </div>
+    <div class="rpt-stats">
+      <div class="rpt-stat"><div class="rpt-stat-label">Total del período</div><div class="rpt-stat-val" style="color:#d9394c">${nomFmt(totalGeneral)}</div></div>
+    </div>
+    <div class="rpt-section-title">Por persona</div>
+    ${entradas.map(([uid, d]) => {
+      const u = STATE.usuarios.find(x => x.id === uid);
+      const totalAPagar = d.total + d.cargosFijos;
+      return `<div class="rpt-row">
+        <div><div class="rl-main">${u?.nombre || "—"}</div>
+          <div class="rl-sub">Consumo ${nomFmt(d.total)}${d.cargosFijos > 0 ? ` + cargos fijos ${nomFmt(d.cargosFijos)}` : ""}${d.pendiente > 0 ? ` · pendiente futuro ${nomFmt(d.pendiente)}` : ""}</div></div>
+        <div class="rl-amt" style="color:#d9394c">${nomFmt(totalAPagar)}</div>
+      </div>`;
+    }).join("")}
+    <div class="rpt-footer">Generado el ${new Date().toLocaleDateString("es-CO",{day:"numeric",month:"long",year:"numeric"})} · FinanzasHogar</div>
+  </div>`;
+  document.body.appendChild(wrap);
+
+  notify("Generando imagen…", "info");
+  try {
+    const el = wrap.firstElementChild;
+    const canvas = await html2canvas(el, { backgroundColor: "#ffffff", scale: 2 });
+    canvas.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `tarjeta-${MESES_NOMBRE[STATE.mes].toLowerCase()}-${STATE.ano}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      if (navigator.share && navigator.canShare) {
+        const file = new File([blob], "tarjeta.png", { type: "image/png" });
+        if (navigator.canShare({ files: [file] })) {
+          navigator.share({ files: [file], title: "Distribución de tarjeta" }).catch(() => {});
+        }
+      }
+      notify("Imagen lista", "success");
+    }, "image/png");
+  } catch (e) {
+    notify("No se pudo generar la imagen", "error");
+  } finally {
+    wrap.remove();
+  }
 }
 function openModalEditMov(id) {
   const m = STATE.movimientosTarjeta.find(x => x.id === id);
@@ -1497,35 +1623,3 @@ async function descargarReporteImg() {
     initLogin();
   }
 })();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
