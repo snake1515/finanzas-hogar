@@ -630,10 +630,22 @@ function switchTabT(tab, el) {
   el.classList.add("active");
   ["tCargar","tAsignar","tCargos","tResumen","tExtractos"].forEach(id => document.getElementById(id).style.display = "none");
   document.getElementById("t" + tab[0].toUpperCase() + tab.slice(1)).style.display = "";
+  if (tab === "cargar") avisarSiPeriodoYaTieneMovimientos();
   if (tab === "asignar") renderCsvAsignar();
   if (tab === "cargos") cargarCargosFijos();
   if (tab === "resumen") renderResumenTarjeta();
   if (tab === "extractos") cargarExtractos();
+}
+async function avisarSiPeriodoYaTieneMovimientos() {
+  const periodo = `${STATE.ano}-${String(STATE.mes+1).padStart(2,"0")}`;
+  const cont = document.getElementById("periodoYaTieneMovs");
+  try {
+    const movs = await api(`/tarjetas/movimientos?periodo=${periodo}`);
+    cont.innerHTML = movs.length ? `<div class="alert-item warning" style="margin-bottom:12px">
+      ⚠️ Este período (${MESES_NOMBRE[STATE.mes]} ${STATE.ano}) ya tiene <b>${movs.length}</b> movimiento(s) guardado(s).
+      Si subes el extracto de nuevo, los que sean idénticos a los ya guardados no se repetirán — pero revisa el "4 · Resumen" antes de volver a procesar el PDF.
+    </div>` : "";
+  } catch (e) { cont.innerHTML = ""; }
 }
 function handleDropPDF(ev) {
   ev.preventDefault();
@@ -668,7 +680,6 @@ async function subirPDF(file, password = "") {
     let msg = `${STATE.csvPendientes.length} compras por asignar`;
     if (STATE.cargosDetectados.length) msg += ` · ${STATE.cargosDetectados.length} cargos fijos detectados`;
     if (STATE.pagosDetectados.length) msg += ` · ${STATE.pagosDetectados.length} pagos/abonos (informativos)`;
-    if (data.duplicados_descartados > 0) msg += ` · ⚠️ se descartaron ${data.duplicados_descartados} línea(s) duplicada(s) del PDF (posible artefacto de extracción)`;
     msg += data.extracto && !data.extracto.error ? " · extracto guardado ✓" : " · el PDF no quedó guardado (revisa la configuración de Storage)";
     statusEl.innerHTML = `<div class="alert-item info">${msg}</div>`;
     renderCsvPreview();
@@ -752,6 +763,7 @@ async function agregarTodosCargosDetectados() {
 function renderTarjetas() {
   document.getElementById("asignarTodosSelect").innerHTML = `<option value="">— elegir —</option>` +
     STATE.usuarios.map(u => `<option value="${u.id}">${u.nombre}</option>`).join("");
+  avisarSiPeriodoYaTieneMovimientos();
   renderCsvAsignar();
 }
 function renderCsvAsignar() {
@@ -870,9 +882,12 @@ async function guardarMovimientosAsignados() {
 
   if (!filas.length) return notify("Asigna o divide al menos un movimiento", "error");
   try {
-    await api("/tarjetas/movimientos", { method: "POST", body: JSON.stringify({ movimientos: filas }) });
+    const res = await api("/tarjetas/movimientos", { method: "POST", body: JSON.stringify({ movimientos: filas }) });
     STATE.csvPendientes = STATE.csvPendientes.filter(m => !idsGuardados.includes(m.id));
-    notify("Movimientos guardados", "success");
+    const omitidos = res.omitidos_por_duplicado || 0;
+    notify(omitidos > 0
+      ? `Movimientos guardados (${omitidos} ya existían y no se repitieron)`
+      : "Movimientos guardados", "success");
     switchTabT("cargos", document.querySelectorAll("#page-tarjetas .tab")[2]);
   } catch (e) { notify(e.message, "error"); }
 }
