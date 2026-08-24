@@ -27,7 +27,7 @@ def procesar_pdf():
     except Exception as e:
         return jsonify({"error": "PDF protegido o contraseña incorrecta", "detalle": str(e)}), 422
 
-    movimientos, duplicados_descartados = extraer_movimientos_rappicard(texto_completo)
+    movimientos = extraer_movimientos_rappicard(texto_completo)
 
     # Guarda el PDF original en Supabase Storage para poder consultarlo después.
     # Si esto falla (bucket/tabla no configurados), no bloqueamos el procesamiento
@@ -53,7 +53,6 @@ def procesar_pdf():
     return jsonify({
         "movimientos": movimientos,
         "extracto": extracto_guardado,
-        "duplicados_descartados": duplicados_descartados,
     })
 
 
@@ -100,8 +99,6 @@ def _parse_money(s):
 def extraer_movimientos_rappicard(texto: str):
     lineas = texto.splitlines()
     movimientos = []
-    vistos = set()
-    duplicados_descartados = 0
 
     for i, linea in enumerate(lineas):
         m = PATRON_FILA.match(linea.strip())
@@ -133,17 +130,12 @@ def extraer_movimientos_rappicard(texto: str):
         # valor completo de la compra original, para que no se pierda ese dato.
         monto = capital_facturado if capital_facturado is not None else valor_transaccion
 
-        # Algunos PDF de extracto duplican el texto internamente (dos capas de
-        # texto superpuestas u otro artefacto de generación del documento), y
-        # pdfplumber termina leyendo la misma línea más de una vez. Si la fila
-        # es IDÉNTICA en todos sus campos a una ya vista, la descartamos —
-        # una compra real repetida con exactitud byte a byte en fecha, monto,
-        # descripción y número de cuota es extremadamente improbable.
-        clave = (fecha, desc, tarjeta, monto, valor_transaccion, cuota_actual, cuota_total, capital_pendiente)
-        if clave in vistos:
-            duplicados_descartados += 1
-            continue
-        vistos.add(clave)
+        # NOTA: no deduplicamos aquí. Un extracto real puede traer legítimamente
+        # dos transacciones con la misma fecha/descripción/monto (ej. dos
+        # compras separadas por el mismo valor en el mismo local, el mismo
+        # día) — descartarlas por parecerse borraría una compra real. La
+        # protección contra duplicados vive en el guardado (ver /movimientos),
+        # que evita volver a insertar el mismo lote si ya se guardó antes.
 
         es_sin_cuotas = (cuotas == "N/A")
         if es_sin_cuotas:
@@ -164,7 +156,7 @@ def extraer_movimientos_rappicard(texto: str):
             "es_cargo_fijo": es_cargo_fijo,
         })
 
-    return movimientos, duplicados_descartados
+    return movimientos
 
 
 @tarjetas_bp.route("/extractos", methods=["GET"])
@@ -214,13 +206,53 @@ def listar_movimientos():
 @login_required
 def guardar_movimientos():
     """Guarda en lote los movimientos ya asignados (y opcionalmente divididos
-    entre varias personas) desde el frontend."""
+    entre varias personas) desde el frontend.
+
+    Protección contra guardado duplicado: si el mismo período ya tiene
+    guardado un movimiento IDÉNTICO (misma fecha, descripción, monto, valor
+    total, cuota y responsable) — por ejemplo porque el usuario procesó y
+    guardó el mismo extracto más de una vez — no lo vuelve a insertar. Esto
+    es distinto de rechazar transacciones que se parecen entre sí: si el
+    extracto trae dos compras reales idénticas (mismo local, mismo valor,
+    mismo día), ambas se guardan la primera vez sin problema; lo que se
+    bloquea es reinsertar ese mismo lote una segunda vez.
+    """
     filas = request.get_json()["movimientos"]
     permitido = {"descripcion", "monto", "valor_total", "capital_pendiente",
                  "fecha", "responsable_id", "cuota_actual", "cuota_total", "periodo"}
     filas_limpias = [{k: v for k, v in f.items() if k in permitido} for f in filas]
-    res = supabase.table("csv_tx").insert(filas_limpias).execute()
-    return jsonify(res.data), 201
+
+    periodos = {f.get("periodo") for f in filas_limpias if f.get("periodo")}
+
+    def firma(f):
+        return (f.get("fecha"), f.get("descripcion"), f.get("monto"), f.get("valor_total"),
+                f.get("cuota_actual"), f.get("cuota_total"), f.get("responsable_id"))
+
+    conteo_existentes = {}
+    if periodos:
+        res_exist = supabase.table("csv_tx").select(
+            "fecha,descripcion,monto,valor_total,cuota_actual,cuota_total,responsable_id"
+        ).in_("periodo", list(periodos)).execute()
+        for e in (res_exist.data or []):
+            k = firma(e)
+            conteo_existentes[k] = conteo_existentes.get(k, 0) + 1
+
+    a_insertar, omitidos = [], 0
+    for f in filas_limpias:
+        k = firma(f)
+        disponibles = conteo_existentes.get(k, 0)
+        if disponibles > 0:
+            conteo_existentes[k] = disponibles - 1
+            omitidos += 1
+            continue
+        a_insertar.append(f)
+
+    guardados = []
+    if a_insertar:
+        res = supabase.table("csv_tx").insert(a_insertar).execute()
+        guardados = res.data or []
+
+    return jsonify({"guardados": guardados, "omitidos_por_duplicado": omitidos}), 201
 
 
 @tarjetas_bp.route("/movimientos/<mov_id>", methods=["PUT"])
@@ -241,6 +273,9 @@ def editar_movimiento(mov_id):
 def eliminar_movimiento(mov_id):
     supabase.table("csv_tx").delete().eq("id", mov_id).execute()
     return jsonify({"ok": True})
+
+
+
 
 
 
