@@ -274,9 +274,29 @@ def guardar_movimientos():
 
     periodos = {f.get("periodo") for f in filas_limpias if f.get("periodo")}
 
+    def _num(v):
+        # Supabase devuelve columnas numéricas como texto (ej. "79900.00"),
+        # mientras que el frontend manda números JSON (79900). Sin normalizar,
+        # la comparación de firmas nunca coincide y el chequeo de duplicados
+        # queda inútil — por eso se redondea todo a float antes de comparar.
+        if v is None or v == "":
+            return None
+        try:
+            return round(float(v), 2)
+        except (TypeError, ValueError):
+            return v
+
+    def _entero(v):
+        if v is None or v == "":
+            return None
+        try:
+            return int(float(v))
+        except (TypeError, ValueError):
+            return v
+
     def firma(f):
-        return (f.get("fecha"), f.get("descripcion"), f.get("monto"), f.get("valor_total"),
-                f.get("cuota_actual"), f.get("cuota_total"), f.get("responsable_id"))
+        return (f.get("fecha"), f.get("descripcion"), _num(f.get("monto")), _num(f.get("valor_total")),
+                _entero(f.get("cuota_actual")), _entero(f.get("cuota_total")), f.get("responsable_id"))
 
     conteo_existentes = {}
     if periodos:
@@ -323,6 +343,8 @@ def editar_movimiento(mov_id):
 def eliminar_movimiento(mov_id):
     supabase.table("csv_tx").delete().eq("id", mov_id).execute()
     return jsonify({"ok": True})
+
+
 
 
 
