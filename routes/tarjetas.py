@@ -96,6 +96,38 @@ def _parse_money(s):
     return float(s.replace("$", "").replace(".", "").replace(",", "."))
 
 
+# Cargos que vienen en el bloque "Detalle pago mínimo" al inicio del extracto
+# (no aparecen como fila en la tabla de transacciones): intereses corrientes,
+# intereses de mora, cuota de avances y otros cargos/comisiones. Se leen aparte
+# porque tienen un formato de "etiqueta + valor" distinto al de la tabla.
+_PATRONES_CARGOS_RESUMEN = [
+    ("Intereses corrientes del mes", r"Intereses\s+corrientes\s+del\s+mes\s*\$?\s*([\d.,]+)"),
+    ("Intereses de mora", r"Intereses\s+de\s+mora\s*\$?\s*([\d.,]+)"),
+    ("Cuota de Avances", r"Cuota\s+de\s+Avances\s*\$?\s*([\d.,]+)"),
+    ("Otros cargos (comisiones de avance, reexpedición)",
+     r"Otros\s+cargos\s*\(\s*comisiones\s+de\s+avance,?\s*reexpedici[oó]n\s*\)\s*\$?\s*([\d.,]+)"),
+]
+
+
+def _extraer_cargos_resumen(texto):
+    inicio = texto.find("Detalle pago mínimo")
+    if inicio == -1:
+        return []
+    fin = texto.find("Detalle pago total", inicio)
+    bloque = texto[inicio: fin if fin != -1 else inicio + 1500]
+    bloque = re.sub(r"\s+", " ", bloque)  # colapsa saltos de línea de etiquetas partidas en dos renglones
+
+    encontrados = []
+    for etiqueta, patron in _PATRONES_CARGOS_RESUMEN:
+        m = re.search(patron, bloque, re.I)
+        if not m:
+            continue
+        valor = _parse_money("$" + m.group(1))
+        if valor and valor > 0:
+            encontrados.append({"descripcion": etiqueta, "monto": valor})
+    return encontrados
+
+
 def extraer_movimientos_rappicard(texto: str):
     lineas = texto.splitlines()
     movimientos = []
@@ -154,6 +186,24 @@ def extraer_movimientos_rappicard(texto: str):
             "capital_pendiente": capital_pendiente,
             "es_pago_o_ajuste": es_pago,
             "es_cargo_fijo": es_cargo_fijo,
+        })
+
+    # Cargos del resumen del extracto (intereses, avances, otros cargos) que
+    # no aparecen como fila en la tabla de transacciones, sino en el bloque
+    # "Detalle pago mínimo" al inicio del PDF — se agregan como cargos fijos
+    # listos para dividir, igual que los detectados en la tabla.
+    for c in _extraer_cargos_resumen(texto):
+        movimientos.append({
+            "fecha": None,
+            "descripcion": c["descripcion"],
+            "tarjeta": None,
+            "monto": c["monto"],
+            "valor_total": None,
+            "cuota_actual": None,
+            "cuota_total": None,
+            "capital_pendiente": None,
+            "es_pago_o_ajuste": False,
+            "es_cargo_fijo": True,
         })
 
     return movimientos
@@ -273,6 +323,8 @@ def editar_movimiento(mov_id):
 def eliminar_movimiento(mov_id):
     supabase.table("csv_tx").delete().eq("id", mov_id).execute()
     return jsonify({"ok": True})
+
+
 
 
 
