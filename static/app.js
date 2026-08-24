@@ -685,21 +685,28 @@ function reintentarPDF() {
   const pass = document.getElementById("pdfPassword").value;
   if (pdfFileActual) subirPDF(pdfFileActual, pass);
 }
-function renderCsvPreview() {
-  const cont = document.getElementById("csvPreview");
-  const hayAlgo = STATE.csvPendientes.length || (STATE.pagosDetectados||[]).length || (STATE.cargosDetectados||[]).length;
-  if (!hayAlgo) { cont.innerHTML = ""; return; }
-
-  const cargosHtml = (STATE.cargosDetectados || []).length ? `<div class="card" style="margin-top:12px">
-    <div class="card-header"><div class="card-title">🧾 Cargos fijos detectados (${STATE.cargosDetectados.length})</div>
+// Reutilizable: se muestra tanto en la pestaña "Cargar" como en "Cargos fijos",
+// para que no importa por dónde entres, siempre veas lo que la app detectó.
+function cargosDetectadosHtml() {
+  if (!(STATE.cargosDetectados || []).length) return "";
+  return `<div class="card" style="margin-bottom:12px">
+    <div class="card-header"><div class="card-title">🧾 Cargos fijos detectados en el extracto (${STATE.cargosDetectados.length})</div>
       <button class="btn btn-primary btn-sm" onclick="agregarTodosCargosDetectados()">+ Agregar todos</button></div>
-    <div class="list-sub" style="margin-bottom:8px">Intereses, cuota de manejo, IVA, seguros… Agrégalos como cargo fijo para dividirlos entre las personas en la pestaña "Cargos fijos".</div>
+    <div class="list-sub" style="margin-bottom:8px">Intereses, cuota de manejo, IVA, seguros… Agrégalos para dividirlos entre las personas.</div>
     ${STATE.cargosDetectados.map(m => `<div class="list-item">
       <div class="list-body"><div class="list-title">${m.descripcion}</div><div class="list-sub">${m.fecha || "—"}</div></div>
       <div class="list-amount">${cop(m.monto)}</div>
       <button class="btn btn-ghost btn-sm" onclick="agregarCargoDetectado('${m.id}')">+ Agregar</button>
     </div>`).join("")}
-  </div>` : "";
+  </div>`;
+}
+
+function renderCsvPreview() {
+  const cont = document.getElementById("csvPreview");
+  const hayAlgo = STATE.csvPendientes.length || (STATE.pagosDetectados||[]).length || (STATE.cargosDetectados||[]).length;
+  if (!hayAlgo) { cont.innerHTML = ""; return; }
+
+  const cargosHtml = cargosDetectadosHtml();
 
   const pagosHtml = (STATE.pagosDetectados || []).length ? `<div class="card" style="margin-top:12px">
     <div class="card-header"><div class="card-title">💳 Pagos / abonos detectados (${STATE.pagosDetectados.length})</div></div>
@@ -711,16 +718,15 @@ function renderCsvPreview() {
   </div>` : "";
 
   if (!STATE.csvPendientes.length) { cont.innerHTML = cargosHtml + pagosHtml; return; }
-  cont.innerHTML = `<div class="card">
-    <div class="card-header"><div class="card-title">Vista previa</div></div>
-    ${STATE.csvPendientes.slice(0, 8).map(m => `<div class="list-item">
+  cont.innerHTML = `<div class="card" style="margin-bottom:12px">
+    <div class="card-header"><div class="card-title">Compras detectadas (${STATE.csvPendientes.length})</div></div>
+    ${STATE.csvPendientes.map(m => `<div class="list-item">
       <div class="list-body"><div class="list-title">${m.descripcion}</div><div class="list-sub">${m.fecha || "—"}${m.cuota_total ? ` · cuota ${m.cuota_actual}/${m.cuota_total}` : ""}</div></div>
       <div class="list-right">
         <div class="list-amount">${cop(m.monto)}</div>
         ${m.valor_total && m.valor_total !== m.monto ? `<div class="valor-compra-total">Compra total: ${cop(m.valor_total)}</div>` : ""}
       </div>
     </div>`).join("")}
-    ${STATE.csvPendientes.length > 8 ? `<div class="list-sub" style="padding-top:8px">+ ${STATE.csvPendientes.length-8} más…</div>` : ""}
     <button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="switchTabT('asignar', document.querySelectorAll('#page-tarjetas .tab')[1])">Continuar a asignación →</button>
   </div>${cargosHtml}${pagosHtml}`;
 }
@@ -734,6 +740,7 @@ async function agregarCargoDetectado(id) {
     })});
     STATE.cargosDetectados = STATE.cargosDetectados.filter(x => x.id !== id);
     renderCsvPreview();
+    if (document.getElementById("tCargos").style.display !== "none") cargarCargosFijos();
     notify(`"${m.descripcion}" agregado a cargos fijos`, "success");
   } catch (e) { notify(e.message, "error"); }
 }
@@ -870,6 +877,8 @@ async function guardarMovimientosAsignados() {
   } catch (e) { notify(e.message, "error"); }
 }
 async function cargarCargosFijos() {
+  document.getElementById("cargosDetectadosEnCargos").innerHTML = cargosDetectadosHtml();
+
   const periodo = `${STATE.ano}-${String(STATE.mes+1).padStart(2,"0")}`;
   const [cargos, movimientos] = await Promise.all([
     api(`/cargos-fijos?periodo=${periodo}`),
@@ -1715,5 +1724,6 @@ async function descargarReporteImg() {
     initLogin();
   }
 })();
+
 
 
