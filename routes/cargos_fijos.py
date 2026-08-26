@@ -29,8 +29,13 @@ def crear_cargo():
         # asume el 100% del cargo, sin dividirlo entre nadie más).
         "responsable_id": data.get("responsable_id"),
     }
-    res = supabase.table("cargos_fijos").insert(nuevo).execute()
-    return jsonify(res.data[0]), 201
+    try:
+        res = supabase.table("cargos_fijos").insert(nuevo).execute()
+        return jsonify(res.data[0]), 201
+    except Exception as e:
+        # Devolvemos el mensaje real de Supabase/Postgres en vez de un 500
+        # genérico, para poder diagnosticar sin tener que ir a los logs de Render.
+        return jsonify({"error": str(e)}), 500
 
 
 @cargos_fijos_bp.route("/<cargo_id>", methods=["DELETE"])
@@ -38,4 +43,5 @@ def crear_cargo():
 def eliminar_cargo(cargo_id):
     supabase.table("cargos_fijos").delete().eq("id", cargo_id).execute()
     return jsonify({"ok": True})
+
 
