@@ -351,10 +351,15 @@ body{flex-direction:row;}
             </div>
             <div class="form-group">
               <label class="form-label">Tipo de reparto</label>
-              <select class="form-select" id="cfTipo">
+              <select class="form-select" id="cfTipo" onchange="document.getElementById('cfResponsableWrap').style.display = this.value === 'individual' ? '' : 'none'">
                 <option value="proporcional">Proporcional al consumo de cada uno</option>
                 <option value="igualitario">Igualitario (partes iguales)</option>
+                <option value="individual">Un solo responsable asume todo el cargo</option>
               </select>
+            </div>
+            <div class="form-group" id="cfResponsableWrap" style="display:none">
+              <label class="form-label">¿Quién asume este cargo?</label>
+              <select class="form-select" id="cfResponsable"></select>
             </div>
             <button class="btn btn-primary btn-sm" onclick="agregarCargoFijo()">+ Agregar cargo</button>
           </div>
@@ -664,4 +669,3 @@ body{flex-direction:row;}
 <script src="/app.js"></script>
 </body>
 </html>
-
