@@ -96,16 +96,32 @@ def _parse_money(s):
     return float(s.replace("$", "").replace(".", "").replace(",", "."))
 
 
-# Cargos que vienen en el bloque "Detalle pago mínimo" al inicio del extracto
-# (no aparecen como fila en la tabla de transacciones): intereses corrientes,
-# intereses de mora, cuota de avances y otros cargos/comisiones. Se leen aparte
-# porque tienen un formato de "etiqueta + valor" distinto al de la tabla.
+# Cargos que vienen en el bloque "Detalle pago mínimo" / "Detalle pago total"
+# al inicio del extracto y que NO aparecen como fila en la tabla de
+# transacciones (así que hay que dividirlos aparte, no forman parte de
+# ninguna compra ya asignada): intereses corrientes e intereses de mora
+# (el costo de financiación de los saldos, no atado a una compra puntual) y
+# otros cargos/comisiones.
+#
+# OJO — "Cuota de Avances" y "Capital facturado consumos del mes" NO se
+# incluyen aquí a propósito: son subtotales de lo que YA aparece como fila
+# individual en la tabla de transacciones (ej. "Cuota de Avances" = suma de
+# la cuota de este período de cada compra tipo "AVANCE ..."). Agregarlos como
+# cargo fijo aparte duplicaría ese valor: una vez como compra asignada a una
+# persona, y otra vez como cargo fijo repartido entre todos.
+#
+# El PDF tiene esas dos tablas ("pago mínimo"/"pago total") lado a lado, y
+# pdfplumber las extrae ENTRELAZADAS línea por línea (una línea de cada
+# columna, alternando) — por eso los patrones toleran que la etiqueta y el
+# valor queden separados o en distinto orden, y el bloque de búsqueda llega
+# hasta "Detalle de transacciones" en vez de cortar en el segundo título
+# (que puede aparecer pegado justo después del primero).
 _PATRONES_CARGOS_RESUMEN = [
     ("Intereses corrientes del mes", r"Intereses\s+corrientes\s+del\s+mes\s*\$?\s*([\d.,]+)"),
     ("Intereses de mora", r"Intereses\s+de\s+mora\s*\$?\s*([\d.,]+)"),
-    ("Cuota de Avances", r"Cuota\s+de\s+Avances\s*\$?\s*([\d.,]+)"),
     ("Otros cargos (comisiones de avance, reexpedición)",
-     r"Otros\s+cargos\s*\(\s*comisiones\s+de\s+avance,?\s*reexpedici[oó]n\s*\)\s*\$?\s*([\d.,]+)"),
+     r"Otros\s+cargos\s*\(\s*comisiones\s+de\s+avance,?\s*"
+     r"(?:reexpedici[oó]n\s*\)\s*\$?\s*([\d.,]+)|\$?\s*([\d.,]+)\s*\$?\s*[\d.,]*\s*reexpedici[oó]n)"),
 ]
 
 
@@ -113,8 +129,8 @@ def _extraer_cargos_resumen(texto):
     inicio = texto.find("Detalle pago mínimo")
     if inicio == -1:
         return []
-    fin = texto.find("Detalle pago total", inicio)
-    bloque = texto[inicio: fin if fin != -1 else inicio + 1500]
+    fin = texto.find("Detalle de transacciones", inicio)
+    bloque = texto[inicio: fin if fin != -1 else inicio + 2000]
     bloque = re.sub(r"\s+", " ", bloque)  # colapsa saltos de línea de etiquetas partidas en dos renglones
 
     encontrados = []
@@ -122,7 +138,8 @@ def _extraer_cargos_resumen(texto):
         m = re.search(patron, bloque, re.I)
         if not m:
             continue
-        valor = _parse_money("$" + m.group(1))
+        grupo = next((g for g in m.groups() if g), None)
+        valor = _parse_money("$" + grupo) if grupo else None
         if valor and valor > 0:
             encontrados.append({"descripcion": etiqueta, "monto": valor})
     return encontrados
@@ -343,6 +360,9 @@ def editar_movimiento(mov_id):
 def eliminar_movimiento(mov_id):
     supabase.table("csv_tx").delete().eq("id", mov_id).execute()
     return jsonify({"ok": True})
+
+
+
 
 
 
