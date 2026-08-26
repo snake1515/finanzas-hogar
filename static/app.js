@@ -893,6 +893,7 @@ async function guardarMovimientosAsignados() {
 }
 async function cargarCargosFijos() {
   document.getElementById("cargosDetectadosEnCargos").innerHTML = cargosDetectadosHtml();
+  document.getElementById("cfResponsable").innerHTML = STATE.usuarios.map(u => `<option value="${u.id}">${u.nombre}</option>`).join("");
 
   const periodo = `${STATE.ano}-${String(STATE.mes+1).padStart(2,"0")}`;
   const [cargos, movimientos] = await Promise.all([
@@ -907,9 +908,14 @@ async function cargarCargosFijos() {
   const totalConsumo = Object.values(consumoPorPersona).reduce((s, v) => s + v, 0);
   const usuariosConMovimiento = STATE.usuarios.filter(u => consumoPorPersona[u.id] > 0);
 
+  const etiquetaTipo = { igualitario: "Partes iguales", proporcional: "Proporcional al consumo", individual: "Un solo responsable" };
+
   document.getElementById("cargosFijosItems").innerHTML = STATE.cargosFijos.map(c => {
     let reparto;
-    if (c.tipo_reparto === "igualitario") {
+    if (c.tipo_reparto === "individual") {
+      const u = STATE.usuarios.find(x => x.id === c.responsable_id);
+      reparto = u ? [{ u, valor: c.monto }] : [];
+    } else if (c.tipo_reparto === "igualitario") {
       const porPersona = STATE.usuarios.length ? c.monto / STATE.usuarios.length : 0;
       reparto = STATE.usuarios.map(u => ({ u, valor: porPersona }));
     } else {
@@ -920,7 +926,7 @@ async function cargarCargosFijos() {
     }
     return `<div class="list-item" style="flex-direction:column;align-items:stretch;gap:6px">
       <div style="display:flex;justify-content:space-between;align-items:center">
-        <div class="list-body"><div class="list-title">${c.descripcion}</div><div class="list-sub">${c.tipo_reparto === "igualitario" ? "Partes iguales" : "Proporcional al consumo"}</div></div>
+        <div class="list-body"><div class="list-title">${c.descripcion}</div><div class="list-sub">${etiquetaTipo[c.tipo_reparto] || c.tipo_reparto}</div></div>
         <div class="list-amount">${cop(c.monto)}</div>
         <button class="btn btn-danger btn-sm" onclick="eliminarCargoFijo('${c.id}')">✕</button>
       </div>
@@ -934,13 +940,16 @@ async function cargarCargosFijos() {
 }
 async function agregarCargoFijo() {
   const periodo = `${STATE.ano}-${String(STATE.mes+1).padStart(2,"0")}`;
+  const tipo = document.getElementById("cfTipo").value;
   const payload = {
     descripcion: document.getElementById("cfDesc").value,
     monto: moneyValue(document.getElementById("cfMonto")),
-    tipo_reparto: document.getElementById("cfTipo").value,
+    tipo_reparto: tipo,
     periodo,
   };
+  if (tipo === "individual") payload.responsable_id = document.getElementById("cfResponsable").value;
   if (!payload.descripcion || !payload.monto) return notify("Completa descripción y monto", "error");
+  if (tipo === "individual" && !payload.responsable_id) return notify("Elige quién asume el cargo", "error");
   await api("/cargos-fijos", { method: "POST", body: JSON.stringify(payload) });
   document.getElementById("cfDesc").value = "";
   setMoneyValue(document.getElementById("cfMonto"), 0);
@@ -988,18 +997,28 @@ async function renderResumenTarjeta() {
   });
   const totalConsumo = Object.values(porPersona).reduce((s, d) => s + d.total, 0);
 
-  // Si hay algún cargo fijo "igualitario", se reparte entre TODAS las personas
-  // registradas (no solo entre quienes ya usaron la tarjeta este período).
+  // Si hay algún cargo fijo "igualitario" o "individual", se asegura que la(s)
+  // persona(s) involucradas existan en porPersona aunque no hayan usado la
+  // tarjeta este período (si no, su reparto se perdería silenciosamente).
   if (cargosFijos.some(c => c.tipo_reparto === "igualitario")) {
     STATE.usuarios.forEach(u => {
       porPersona[u.id] = porPersona[u.id] || { total: 0, pendiente: 0, cargosFijos: 0, cargosDetalle: [] };
     });
   }
+  cargosFijos.filter(c => c.tipo_reparto === "individual" && c.responsable_id).forEach(c => {
+    porPersona[c.responsable_id] = porPersona[c.responsable_id] || { total: 0, pendiente: 0, cargosFijos: 0, cargosDetalle: [] };
+  });
 
-  // Reparte cada cargo fijo (igualitario o proporcional al consumo) y guarda
-  // el detalle de cuánto correspondió de CADA cargo a cada persona, para el
-  // reporte de la división.
+  // Reparte cada cargo fijo (igualitario, proporcional, o 100% a un solo
+  // responsable) y guarda el detalle de cuánto correspondió de CADA cargo a
+  // cada persona, para el reporte de la división.
   cargosFijos.forEach(c => {
+    if (c.tipo_reparto === "individual") {
+      if (!c.responsable_id || !porPersona[c.responsable_id]) return;
+      porPersona[c.responsable_id].cargosFijos += c.monto;
+      porPersona[c.responsable_id].cargosDetalle.push({ descripcion: c.descripcion, valor: c.monto });
+      return;
+    }
     const ids = Object.keys(porPersona);
     if (!ids.length) return;
     ids.forEach(uid => {
