@@ -950,10 +950,14 @@ async function agregarCargoFijo() {
   if (tipo === "individual") payload.responsable_id = document.getElementById("cfResponsable").value;
   if (!payload.descripcion || !payload.monto) return notify("Completa descripción y monto", "error");
   if (tipo === "individual" && !payload.responsable_id) return notify("Elige quién asume el cargo", "error");
-  await api("/cargos-fijos", { method: "POST", body: JSON.stringify(payload) });
-  document.getElementById("cfDesc").value = "";
-  setMoneyValue(document.getElementById("cfMonto"), 0);
-  cargarCargosFijos();
+  try {
+    await api("/cargos-fijos", { method: "POST", body: JSON.stringify(payload) });
+    document.getElementById("cfDesc").value = "";
+    setMoneyValue(document.getElementById("cfMonto"), 0);
+    cargarCargosFijos();
+  } catch (e) {
+    notify(e.message, "error");
+  }
 }
 async function eliminarCargoFijo(id) {
   await api(`/cargos-fijos/${id}`, { method: "DELETE" });
@@ -1758,6 +1762,7 @@ async function descargarReporteImg() {
     initLogin();
   }
 })();
+
 
 
 
