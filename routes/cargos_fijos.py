@@ -25,6 +25,9 @@ def crear_cargo():
         "monto": data["monto"],
         "tipo_reparto": data["tipo_reparto"],
         "periodo": data.get("periodo"),
+        # Solo se usa cuando tipo_reparto == "individual" (una sola persona
+        # asume el 100% del cargo, sin dividirlo entre nadie más).
+        "responsable_id": data.get("responsable_id"),
     }
     res = supabase.table("cargos_fijos").insert(nuevo).execute()
     return jsonify(res.data[0]), 201
@@ -35,3 +38,4 @@ def crear_cargo():
 def eliminar_cargo(cargo_id):
     supabase.table("cargos_fijos").delete().eq("id", cargo_id).execute()
     return jsonify({"ok": True})
+
