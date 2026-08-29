@@ -284,15 +284,22 @@ function renderDashboard() {
   renderAlertasDashboard();
 }
 
-function movItemHtml(g) {
+function movItemHtml(g, opts = {}) {
   const info = catInfo(g.categoria);
   const resp = STATE.usuarios.find(u => u.id === g.responsable_id);
+  const pagado = g.estado === "pagado";
   return `<div class="list-item">
     <div class="list-icon" style="background:${info.color}22">${info.icon}</div>
     <div class="list-body"><div class="list-title">${g.descripcion} ${g.adjunto_url ? '📎' : ''}</div>
       <div class="list-sub">${resp ? resp.nombre : "—"} · ${g.fecha}</div></div>
-    <div class="list-right"><div class="list-amount">${cop(g.monto)}</div>
-      ${g.tipo==='cuota' ? `<div class="list-meta">Cuota ${g.cuota_actual}/${g.cuota_total}</div>` : ""}</div>
+    <div class="list-right">
+      <div class="list-amount">${cop(g.monto)}</div>
+      ${g.tipo==='cuota' ? `<div class="list-meta">Cuota ${g.cuota_actual}/${g.cuota_total}</div>` : ""}
+      ${opts.mostrarEstado ? `<div class="estado-pill ${pagado ? 'pagado' : 'pendiente'}"
+          onclick="event.stopPropagation(); toggleEstadoGasto('${g.id}', '${pagado ? 'pendiente' : 'pagado'}')">
+          ${pagado ? '✓ Pagado' : '○ Pendiente'}
+        </div>` : ""}
+    </div>
   </div>`;
 }
 
@@ -307,8 +314,31 @@ function renderGastos() {
   const lista = STATE.catFiltro === "todas" ? STATE.gastos : STATE.gastos.filter(g => g.categoria === STATE.catFiltro);
   const ordenada = [...lista].sort((a, b) => b.fecha.localeCompare(a.fecha));
   document.getElementById("gastosList").innerHTML = ordenada.map(g => `
-    <div onclick="openModalGasto('${g.id}')" style="cursor:pointer">${movItemHtml(g)}</div>
+    <div onclick="openModalGasto('${g.id}')" style="cursor:pointer">${movItemHtml(g, { mostrarEstado: true })}</div>
   `).join("") || `<div class="empty"><div class="icon">🧾</div><p>No hay gastos registrados</p></div>`;
+
+  cargarPendientesAnteriores();
+}
+async function cargarPendientesAnteriores() {
+  const cont = document.getElementById("gastosPendientesAnteriores");
+  if (!cont) return; // por si el HTML de esta sección aún no se ha desplegado
+  try {
+    const pendientes = await api(`/gastos/pendientes-anteriores?mes=${STATE.mes}&ano=${STATE.ano}`);
+    if (!pendientes.length) { cont.innerHTML = ""; return; }
+    cont.innerHTML = `<div class="card" style="margin-bottom:12px;border-color:var(--orange)">
+      <div class="card-header"><div><div class="card-title">⏳ Pendientes de meses anteriores (${pendientes.length})</div>
+        <div class="card-sub">Se siguen mostrando aquí hasta que los marques como pagados</div></div></div>
+      ${pendientes.map(g => `<div onclick="openModalGasto('${g.id}')" style="cursor:pointer">${movItemHtml(g, { mostrarEstado: true })}</div>`).join("")}
+    </div>`;
+  } catch (e) { cont.innerHTML = ""; }
+}
+async function toggleEstadoGasto(id, nuevoEstado) {
+  try {
+    await api(`/gastos/${id}`, { method: "PUT", body: JSON.stringify({ estado: nuevoEstado }) });
+    const g = STATE.gastos.find(x => x.id === id);
+    if (g) g.estado = nuevoEstado;
+    renderGastos();
+  } catch (e) { notify(e.message, "error"); }
 }
 function filtrarCat(cat) { STATE.catFiltro = cat; renderGastos(); }
 
@@ -1762,6 +1792,11 @@ async function descargarReporteImg() {
     initLogin();
   }
 })();
+
+
+
+
+
 
 
 
