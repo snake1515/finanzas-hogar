@@ -114,6 +114,9 @@ body{flex-direction:row;}
 .list-right{text-align:right;flex-shrink:0;}
 .list-amount{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.3px;}
 .list-meta{font-size:11px;color:var(--text3);margin-top:2px;}
+.estado-pill{font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;margin-top:4px;cursor:pointer;user-select:none;white-space:nowrap;}
+.estado-pill.pendiente{background:var(--orange)22;color:var(--orange);}
+.estado-pill.pagado{background:var(--green)22;color:var(--green);}
 .valor-compra-total{font-size:13px;color:var(--purple);font-weight:600;margin-top:3px;}
 .prog{height:5px;background:var(--bg4);border-radius:3px;overflow:hidden;margin-top:5px;}
 .prog-fill{height:100%;border-radius:3px;transition:width .4s;}
@@ -286,6 +289,7 @@ body{flex-direction:row;}
 
       <div class="page" id="page-gastos">
         <div class="sec-header"><div class="sec-title">Gastos</div><button class="btn btn-primary btn-sm" onclick="openModalGasto()">+ Registrar</button></div>
+        <div id="gastosPendientesAnteriores"></div>
         <div class="chips" id="catChips"></div>
         <div class="card"><div id="gastosList"></div></div>
       </div>
@@ -669,3 +673,4 @@ body{flex-direction:row;}
 <script src="/app.js"></script>
 </body>
 </html>
+
