@@ -35,9 +35,32 @@ def crear_gasto():
         "tipo": data.get("tipo", "unico"),
         "cuota_actual": data.get("cuota_actual"),
         "cuota_total": data.get("cuota_total"),
+        # Todo gasto nuevo nace "pendiente" por defecto, hasta que se marque
+        # manualmente como pagado.
+        "estado": data.get("estado", "pendiente"),
     }
     res = supabase.table("gastos").insert(nuevo).execute()
     return jsonify(res.data[0]), 201
+
+
+@gastos_bp.route("/pendientes-anteriores", methods=["GET"])
+@login_required
+def listar_pendientes_anteriores():
+    """Gastos marcados 'pendiente' cuya fecha es ANTERIOR al mes que se está
+    consultando — para mostrarlos "arrastrados" en la pestaña de Gastos hasta
+    que se marquen como pagados. Es una consulta aparte, independiente del
+    listado normal por mes (no se mezcla con /gastos ni afecta los totales
+    del dashboard, que siguen contando solo lo que cae dentro del mes)."""
+    mes = request.args.get("mes")
+    ano = request.args.get("ano")
+    if not (mes and ano):
+        return jsonify([])
+    inicio = f"{ano}-{int(mes)+1:02d}-01"
+    res = supabase.table("gastos").select("*, usuarios(nombre,color)") \
+        .eq("estado", "pendiente") \
+        .lt("fecha", inicio) \
+        .order("fecha", desc=False).execute()
+    return jsonify(res.data)
 
 
 @gastos_bp.route("/<gasto_id>", methods=["PUT"])
@@ -84,3 +107,4 @@ def ver_foto(gasto_id):
         return jsonify({"error": "Este gasto no tiene foto"}), 404
     firmada = supabase.storage.from_("comprobantes").create_signed_url(gasto["adjunto_url"], 3600)
     return jsonify({"url": firmada["signedURL"]})
+
