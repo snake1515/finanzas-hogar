@@ -26,6 +26,11 @@ def crear_prestamo():
         "fecha": data["fecha"],
         "dia_pago": data.get("dia_pago"),
         "alerta_dias": data.get("alerta_dias", 5),
+        # "credito" (bancario/tarjeta, con concepto) o "personal" (prestado a
+        # o por alguien, con detalle de en qué se gastó).
+        "tipo": data.get("tipo", "credito"),
+        "concepto": data.get("concepto"),
+        "detalle": data.get("detalle"),
     }
     res = supabase.table("prestamos").insert(nuevo).execute()
     return jsonify(res.data[0]), 201
@@ -43,3 +48,4 @@ def actualizar_prestamo(prestamo_id):
 def eliminar_prestamo(prestamo_id):
     supabase.table("prestamos").delete().eq("id", prestamo_id).execute()
     return jsonify({"ok": True})
+
