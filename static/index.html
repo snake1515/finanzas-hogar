@@ -289,6 +289,7 @@ body{flex-direction:row;}
 
       <div class="page" id="page-gastos">
         <div class="sec-header"><div class="sec-title">Gastos</div><button class="btn btn-primary btn-sm" onclick="openModalGasto()">+ Registrar</button></div>
+        <input class="form-input" id="gastosBuscar" placeholder="🔎 Buscar gasto por descripción..." style="margin-bottom:12px" oninput="renderGastos()">
         <div id="gastosPendientesAnteriores"></div>
         <div class="chips" id="catChips"></div>
         <div class="card"><div id="gastosList"></div></div>
@@ -302,6 +303,7 @@ body{flex-direction:row;}
 
       <div class="page" id="page-prestamos">
         <div class="sec-header"><div class="sec-title">Préstamos y deudas</div><button class="btn btn-primary btn-sm" onclick="openModalPrestamo()">+ Agregar</button></div>
+        <input class="form-input" id="prestamosBuscar" placeholder="🔎 Buscar por nombre, concepto o detalle..." style="margin-bottom:12px" oninput="renderPrestamos()">
         <div id="prestamosContent"></div>
       </div>
 
@@ -681,5 +683,6 @@ body{flex-direction:row;}
 <script src="/app.js"></script>
 </body>
 </html>
+
 
 
