@@ -218,6 +218,7 @@ function openModal(id) { document.getElementById(id).classList.add("open"); }
 function renderAll() {
   renderDashboard();
   renderGastos();
+  cargarPendientesAnteriores();
   renderIngresos();
   renderPrestamos();
 }
@@ -311,32 +312,46 @@ function renderGastos() {
   chips.innerHTML = `<div class="chip ${STATE.catFiltro==='todas'?'active':''}" onclick="filtrarCat('todas')">Todas</div>` +
     CATEGORIAS.map(c => `<div class="chip ${STATE.catFiltro===c.id?'active':''}" onclick="filtrarCat('${c.id}')">${c.icon} ${c.nombre}</div>`).join("");
 
-  const lista = STATE.catFiltro === "todas" ? STATE.gastos : STATE.gastos.filter(g => g.categoria === STATE.catFiltro);
+  const busqueda = (document.getElementById("gastosBuscar")?.value || "").trim().toLowerCase();
+  let lista = STATE.catFiltro === "todas" ? STATE.gastos : STATE.gastos.filter(g => g.categoria === STATE.catFiltro);
+  if (busqueda) lista = lista.filter(g => g.descripcion.toLowerCase().includes(busqueda));
   const ordenada = [...lista].sort((a, b) => b.fecha.localeCompare(a.fecha));
   document.getElementById("gastosList").innerHTML = ordenada.map(g => `
     <div onclick="openModalGasto('${g.id}')" style="cursor:pointer">${movItemHtml(g, { mostrarEstado: true })}</div>
-  `).join("") || `<div class="empty"><div class="icon">🧾</div><p>No hay gastos registrados</p></div>`;
+  `).join("") || `<div class="empty"><div class="icon">🧾</div><p>No hay gastos registrados${busqueda ? " con esa búsqueda" : ""}</p></div>`;
 
-  cargarPendientesAnteriores();
+  renderPendientesAnteriores(busqueda);
 }
 async function cargarPendientesAnteriores() {
   const cont = document.getElementById("gastosPendientesAnteriores");
   if (!cont) return; // por si el HTML de esta sección aún no se ha desplegado
   try {
-    const pendientes = await api(`/gastos/pendientes-anteriores?mes=${STATE.mes}&ano=${STATE.ano}`);
-    if (!pendientes.length) { cont.innerHTML = ""; return; }
-    cont.innerHTML = `<div class="card" style="margin-bottom:12px;border-color:var(--orange)">
-      <div class="card-header"><div><div class="card-title">⏳ Pendientes de meses anteriores (${pendientes.length})</div>
-        <div class="card-sub">Se siguen mostrando aquí hasta que los marques como pagados</div></div></div>
-      ${pendientes.map(g => `<div onclick="openModalGasto('${g.id}')" style="cursor:pointer">${movItemHtml(g, { mostrarEstado: true })}</div>`).join("")}
-    </div>`;
-  } catch (e) { cont.innerHTML = ""; }
+    STATE._pendientesAnteriores = await api(`/gastos/pendientes-anteriores?mes=${STATE.mes}&ano=${STATE.ano}`);
+  } catch (e) { STATE._pendientesAnteriores = []; }
+  renderPendientesAnteriores();
+}
+function renderPendientesAnteriores(busqueda) {
+  const cont = document.getElementById("gastosPendientesAnteriores");
+  if (!cont) return;
+  busqueda = busqueda ?? (document.getElementById("gastosBuscar")?.value || "").trim().toLowerCase();
+  let pendientes = STATE._pendientesAnteriores || [];
+  if (busqueda) pendientes = pendientes.filter(g => g.descripcion.toLowerCase().includes(busqueda));
+  if (!pendientes.length) { cont.innerHTML = ""; return; }
+  cont.innerHTML = `<div class="card" style="margin-bottom:12px;border-color:var(--orange)">
+    <div class="card-header"><div><div class="card-title">⏳ Pendientes de meses anteriores (${pendientes.length})</div>
+      <div class="card-sub">Se siguen mostrando aquí hasta que los marques como pagados</div></div></div>
+    ${pendientes.map(g => `<div onclick="openModalGasto('${g.id}')" style="cursor:pointer">${movItemHtml(g, { mostrarEstado: true })}</div>`).join("")}
+  </div>`;
 }
 async function toggleEstadoGasto(id, nuevoEstado) {
   try {
     await api(`/gastos/${id}`, { method: "PUT", body: JSON.stringify({ estado: nuevoEstado }) });
     const g = STATE.gastos.find(x => x.id === id);
     if (g) g.estado = nuevoEstado;
+    // El gasto puede venir de "pendientes de meses anteriores" (que vive en
+    // caché aparte) — se refresca desde la red para que desaparezca de ahí
+    // en cuanto se marque como pagado, en vez de quedarse con el dato viejo.
+    await cargarPendientesAnteriores();
     renderGastos();
   } catch (e) { notify(e.message, "error"); }
 }
@@ -467,8 +482,15 @@ async function saveIngreso() {
    ══════════════════════════════════════ */
 function renderPrestamos() {
   const cont = document.getElementById("prestamosContent");
-  if (!STATE.prestamos.length) { cont.innerHTML = `<div class="empty"><div class="icon">💳</div><p>Sin préstamos registrados</p></div>`; return; }
-  cont.innerHTML = STATE.prestamos.map(p => {
+  const busqueda = (document.getElementById("prestamosBuscar")?.value || "").trim().toLowerCase();
+  const lista = busqueda
+    ? STATE.prestamos.filter(p => [p.nombre, p.concepto, p.detalle].some(campo => (campo || "").toLowerCase().includes(busqueda)))
+    : STATE.prestamos;
+  if (!lista.length) {
+    cont.innerHTML = `<div class="empty"><div class="icon">💳</div><p>${busqueda ? "Sin préstamos que coincidan con esa búsqueda" : "Sin préstamos registrados"}</p></div>`;
+    return;
+  }
+  cont.innerHTML = lista.map(p => {
     const resp = STATE.usuarios.find(u => u.id === p.responsable_id);
     const pct = Math.min(100, Math.round((p.pagadas / p.cuotas) * 100));
     const restante = Math.max(0, p.monto - (p.monto / p.cuotas) * p.pagadas);
@@ -1809,6 +1831,17 @@ async function descargarReporteImg() {
     initLogin();
   }
 })();
+
+
+
+
+
+
+
+
+
+
+
 
 
 
