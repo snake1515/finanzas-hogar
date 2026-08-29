@@ -471,15 +471,19 @@ function renderPrestamos() {
   cont.innerHTML = STATE.prestamos.map(p => {
     const resp = STATE.usuarios.find(u => u.id === p.responsable_id);
     const pct = Math.min(100, Math.round((p.pagadas / p.cuotas) * 100));
-    const restante = p.monto - (p.monto / p.cuotas) * p.pagadas;
+    const restante = Math.max(0, p.monto - (p.monto / p.cuotas) * p.pagadas);
+    const esCredito = (p.tipo || "credito") === "credito";
     return `<div class="loan-card">
       <div class="loan-header">
         <div class="loan-name">${p.nombre}</div>
+        <span class="badge ${esCredito ? 'badge-blue' : 'badge-orange'}">${esCredito ? "Crédito" : "Personal"}</span>
         <span class="badge badge-blue">${resp?.nombre || "—"}</span>
       </div>
+      ${esCredito && p.concepto ? `<div class="list-sub" style="margin:-4px 0 8px">${p.concepto}</div>` : ""}
+      ${!esCredito && p.detalle ? `<div class="list-sub" style="margin:-4px 0 8px">¿En qué se gastó? ${p.detalle}</div>` : ""}
       <div class="loan-grid">
         <div class="loan-stat"><div class="ls-label">Cuota</div><div class="ls-val">${cop(p.cuota)}</div></div>
-        <div class="loan-stat"><div class="ls-label">Restante</div><div class="ls-val">${cop(restante)}</div></div>
+        <div class="loan-stat"><div class="ls-label">Restante</div><div class="ls-val" style="color:${restante > 0 ? 'var(--red)' : 'var(--green)'}">${cop(restante)}</div></div>
         <div class="loan-stat"><div class="ls-label">Progreso</div><div class="ls-val">${p.pagadas}/${p.cuotas}</div></div>
       </div>
       <div class="prog"><div class="prog-fill" style="width:${pct}%;background:var(--accent)"></div></div>
@@ -491,11 +495,20 @@ function renderPrestamos() {
     </div>`;
   }).join("");
 }
+function togglePrestamoTipo() {
+  const esCredito = document.getElementById("pTipo").value === "credito";
+  document.getElementById("pConceptoGrp").style.display = esCredito ? "" : "none";
+  document.getElementById("pDetalleGrp").style.display = esCredito ? "none" : "";
+}
 function openModalPrestamo(id) {
   document.getElementById("pResp").innerHTML = STATE.usuarios.map(u => `<option value="${u.id}">${u.nombre}</option>`).join("");
   const p = id ? STATE.prestamos.find(x => x.id === id) : null;
   document.getElementById("pEditId").value = id || "";
+  document.getElementById("pTipo").value = p?.tipo || "credito";
   document.getElementById("pNombre").value = p?.nombre || "";
+  document.getElementById("pConcepto").value = p?.concepto || "";
+  document.getElementById("pDetalle").value = p?.detalle || "";
+  togglePrestamoTipo();
   setMoneyValue(document.getElementById("pMonto"), p?.monto);
   setMoneyValue(document.getElementById("pCuota"), p?.cuota);
   document.getElementById("pCuotas").value = p?.cuotas || "";
@@ -507,8 +520,12 @@ function openModalPrestamo(id) {
 }
 async function savePrestamo() {
   const id = document.getElementById("pEditId").value;
+  const tipo = document.getElementById("pTipo").value;
   const payload = {
+    tipo,
     nombre: document.getElementById("pNombre").value,
+    concepto: tipo === "credito" ? document.getElementById("pConcepto").value : null,
+    detalle: tipo === "personal" ? document.getElementById("pDetalle").value : null,
     monto: moneyValue(document.getElementById("pMonto")),
     cuota: moneyValue(document.getElementById("pCuota")),
     cuotas: parseInt(document.getElementById("pCuotas").value || 1),
@@ -1792,6 +1809,16 @@ async function descargarReporteImg() {
     initLogin();
   }
 })();
+
+
+
+
+
+
+
+
+
+
 
 
 
