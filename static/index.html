@@ -549,7 +549,15 @@ body{flex-direction:row;}
 <div class="modal-overlay" id="mPrestamo"><div class="modal">
   <div class="modal-handle"></div>
   <div class="modal-title">Nuevo préstamo / deuda</div>
+  <div class="form-group"><label class="form-label">Tipo</label>
+    <select class="form-select" id="pTipo" onchange="togglePrestamoTipo()">
+      <option value="credito">Crédito (bancario, tarjeta, financiera...)</option>
+      <option value="personal">Préstamo personal</option>
+    </select>
+  </div>
   <div class="form-group"><label class="form-label">Nombre</label><input class="form-input" id="pNombre"></div>
+  <div class="form-group" id="pConceptoGrp"><label class="form-label">Concepto</label><input class="form-input" id="pConcepto" placeholder="Ej: Compra de electrodomésticos"></div>
+  <div class="form-group" id="pDetalleGrp"><label class="form-label">¿En qué se gastó?</label><input class="form-input" id="pDetalle" placeholder="Ej: Arreglo del carro"></div>
   <div class="form-row">
     <div class="form-group"><label class="form-label">Monto total</label><input class="form-input money-input" id="pMonto" type="text" inputmode="numeric" placeholder="$ 0"></div>
     <div class="form-group"><label class="form-label">Cuota mensual</label><input class="form-input money-input" id="pCuota" type="text" inputmode="numeric" placeholder="$ 0"></div>
@@ -673,4 +681,5 @@ body{flex-direction:row;}
 <script src="/app.js"></script>
 </body>
 </html>
+
 
