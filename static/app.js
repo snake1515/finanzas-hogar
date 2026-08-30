@@ -1704,6 +1704,32 @@ function agruparGastosPorCategoria(gastos) {
     .sort((a, b) => b.total - a.total);
 }
 
+function agruparIngresosPorPersona(ingresos) {
+  const map = {};
+  ingresos.forEach(i => {
+    const key = i.persona_id || "_sin";
+    if (!map[key]) map[key] = { total: 0, count: 0, items: [] };
+    map[key].total += i.monto;
+    map[key].count++;
+    map[key].items.push(i);
+  });
+  return Object.entries(map)
+    .map(([personaId, v]) => {
+      const u = STATE.usuarios.find(x => x.id === personaId);
+      return { personaId, nombre: u?.nombre || "Sin asignar", ...v };
+    })
+    .sort((a, b) => b.total - a.total);
+}
+
+function rptFilaGasto(g) {
+  const info = catInfo(g.categoria);
+  const resp = STATE.usuarios.find(u => u.id === g.responsable_id);
+  return `<div class="rpt-row">
+    <div><div class="rl-main">${info.icon} ${g.descripcion}</div><div class="rl-sub">${resp?.nombre || "—"} · ${info.nombre} · ${g.fecha}${g.tipo==='cuota' ? ` · Cuota ${g.cuota_actual}/${g.cuota_total}` : ""}</div></div>
+    <div class="rl-amt" style="color:#d9394c">-${nomFmt(g.monto)}</div>
+  </div>`;
+}
+
 function renderReportes() {
   document.getElementById("rptPeriodoLabel").textContent = `${MESES_NOMBRE[STATE.mes]} ${STATE.ano}`;
   const cont = document.getElementById("rptPreview");
@@ -1715,6 +1741,15 @@ function renderReportes() {
   const balance = totalIngresos - totalGastos;
   const porCategoria = agruparGastosPorCategoria(gastos);
   const maxCat = porCategoria[0]?.total || 1;
+
+  // Gastos discriminados: pagados vs. pendientes por pagar
+  const gastosPagados = gastos.filter(g => g.estado === "pagado");
+  const gastosPendientes = gastos.filter(g => g.estado !== "pagado");
+  const totalPagado = gastosPagados.reduce((s, g) => s + g.monto, 0);
+  const totalPendiente = gastosPendientes.reduce((s, g) => s + g.monto, 0);
+
+  // Ingresos discriminados por integrante de la familia
+  const ingresosPorPersona = agruparIngresosPorPersona(ingresos);
 
   // Préstamos con cuota pendiente por pagar este mes (aún no completados)
   const prestamosActivos = STATE.prestamos.filter(p => p.pagadas < p.cuotas);
@@ -1737,6 +1772,8 @@ function renderReportes() {
         <div class="rpt-stat"><div class="rpt-stat-label">Gastos</div><div class="rpt-stat-val" style="color:#d9394c">${nomFmt(totalGastos)}</div></div>
         <div class="rpt-stat"><div class="rpt-stat-label">Balance</div><div class="rpt-stat-val" style="color:${balance>=0?'#1a9e5c':'#d9394c'}">${nomFmt(balance)}</div></div>
         <div class="rpt-stat"><div class="rpt-stat-label">Cuotas préstamos</div><div class="rpt-stat-val" style="color:#c2740c">${nomFmt(totalCuotasPrestamos)}</div></div>
+        <div class="rpt-stat"><div class="rpt-stat-label">Gastos pagados</div><div class="rpt-stat-val" style="color:#1a9e5c">${nomFmt(totalPagado)}</div></div>
+        <div class="rpt-stat"><div class="rpt-stat-label">Gastos pendientes</div><div class="rpt-stat-val" style="color:#d9394c">${nomFmt(totalPendiente)}</div></div>
       </div>
 
       <div class="rpt-section-title">🏦 Préstamos — cuotas a pagar este mes (${prestamosActivos.length})</div>
@@ -1758,24 +1795,26 @@ function renderReportes() {
           <div class="rpt-cat-bar-wrap"><div class="rpt-cat-bar" style="width:${(c.total/maxCat*100).toFixed(0)}%;background:${c.color}"></div></div>
         </div>`).join("") || `<div style="font-size:12px;color:#999;padding:6px 0">Sin gastos este mes</div>`}
 
-      <div class="rpt-section-title">Detalle de ingresos (${ingresos.length})</div>
-      ${ingresos.map(i => {
-        const u = STATE.usuarios.find(x => x.id === i.persona_id);
-        return `<div class="rpt-row">
-          <div><div class="rl-main">${i.fuente || "Ingreso"}</div><div class="rl-sub">${u?.nombre || "—"} · ${i.fecha}</div></div>
-          <div class="rl-amt" style="color:#1a9e5c">+${nomFmt(i.monto)}</div>
-        </div>`;
-      }).join("") || `<div style="font-size:12px;color:#999;padding:6px 0">Sin ingresos este mes</div>`}
+      <div class="rpt-section-title">Detalle de ingresos por integrante (${ingresos.length})</div>
+      ${ingresosPorPersona.map(p => `
+        <div class="rpt-cat-row">
+          <div class="rpt-cat-top">
+            <span>👤 ${p.nombre} <span style="color:#aaa">(${p.count})</span></span>
+            <b style="color:#1a9e5c">${nomFmt(p.total)}</b>
+          </div>
+        </div>
+        ${[...p.items].sort((a, b) => b.fecha.localeCompare(a.fecha)).map(i => `
+          <div class="rpt-row" style="padding-left:14px">
+            <div><div class="rl-main">${i.fuente || "Ingreso"}</div><div class="rl-sub">${i.fecha}</div></div>
+            <div class="rl-amt" style="color:#1a9e5c">+${nomFmt(i.monto)}</div>
+          </div>`).join("")}
+      `).join("") || `<div style="font-size:12px;color:#999;padding:6px 0">Sin ingresos este mes</div>`}
 
-      <div class="rpt-section-title">Detalle de gastos (${gastos.length})</div>
-      ${gastos.map(g => {
-        const info = catInfo(g.categoria);
-        const resp = STATE.usuarios.find(u => u.id === g.responsable_id);
-        return `<div class="rpt-row">
-          <div><div class="rl-main">${info.icon} ${g.descripcion}</div><div class="rl-sub">${resp?.nombre || "—"} · ${info.nombre} · ${g.fecha}${g.tipo==='cuota' ? ` · Cuota ${g.cuota_actual}/${g.cuota_total}` : ""}</div></div>
-          <div class="rl-amt" style="color:#d9394c">-${nomFmt(g.monto)}</div>
-        </div>`;
-      }).join("") || `<div style="font-size:12px;color:#999;padding:6px 0">Sin gastos este mes</div>`}
+      <div class="rpt-section-title">✅ Gastos pagados (${gastosPagados.length}) — ${nomFmt(totalPagado)}</div>
+      ${gastosPagados.map(rptFilaGasto).join("") || `<div style="font-size:12px;color:#999;padding:6px 0">Sin gastos pagados este mes</div>`}
+
+      <div class="rpt-section-title">⏳ Gastos pendientes por pagar (${gastosPendientes.length}) — ${nomFmt(totalPendiente)}</div>
+      ${gastosPendientes.map(rptFilaGasto).join("") || `<div style="font-size:12px;color:#999;padding:6px 0">Sin gastos pendientes este mes</div>`}
 
       <div class="rpt-footer">Generado el ${new Date().toLocaleDateString("es-CO",{day:"numeric",month:"long",year:"numeric"})} · FinanzasHogar</div>
     </div>`;
@@ -1831,34 +1870,3 @@ async function descargarReporteImg() {
     initLogin();
   }
 })();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
