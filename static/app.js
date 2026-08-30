@@ -1194,7 +1194,7 @@ async function descargarReciboTarjeta() {
           <div class="rl-sub">${c.porPersona.map(p => `${STATE.usuarios.find(u=>u.id===p.uid)?.nombre || "—"}: ${nomFmt(p.valor)}`).join(" · ")}</div></div>
         <div class="rl-amt">${nomFmt(c.total)}</div>
       </div>`).join("")}` : ""}
-    <div class="rpt-footer">Generado el ${new Date().toLocaleDateString("es-CO",{day:"numeric",month:"long",year:"numeric"})} · FinanzasHogar</div>
+    <div class="rpt-footer">Generado el ${new Date().toLocaleDateString("es-CO",{day:"numeric",month:"long",year:"numeric"})} a las ${new Date().toLocaleTimeString("es-CO",{hour:"numeric",minute:"2-digit",hour12:true})} · FinanzasHogar</div>
   </div>`;
   document.body.appendChild(wrap);
 
@@ -1816,7 +1816,7 @@ function renderReportes() {
       <div class="rpt-section-title">⏳ Gastos pendientes por pagar (${gastosPendientes.length}) — ${nomFmt(totalPendiente)}</div>
       ${gastosPendientes.map(rptFilaGasto).join("") || `<div style="font-size:12px;color:#999;padding:6px 0">Sin gastos pendientes este mes</div>`}
 
-      <div class="rpt-footer">Generado el ${new Date().toLocaleDateString("es-CO",{day:"numeric",month:"long",year:"numeric"})} · FinanzasHogar</div>
+      <div class="rpt-footer">Generado el ${new Date().toLocaleDateString("es-CO",{day:"numeric",month:"long",year:"numeric"})} a las ${new Date().toLocaleTimeString("es-CO",{hour:"numeric",minute:"2-digit",hour12:true})} · FinanzasHogar</div>
     </div>`;
 }
 
